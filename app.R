@@ -3,6 +3,8 @@ require(openxlsx)
 require(ggplot2)
 require(DT)
 require(plotly)
+#60MB limit
+options(shiny.maxRequestSize=60*1024^2)
 brandontheme=theme(
   panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
   panel.background = element_blank(), axis.line = element_line(colour = "black"),
@@ -25,12 +27,12 @@ ui <- fluidPage(
       # Input: Select a file ----
       fileInput("file1", "Choose a .csv, .tsv or .xlsx DEG list",
                 multiple = FALSE,
-                accept = c("text/csv",
-                           "text/comma-separated-values,text/plain",
-                           ".csv",
+                accept = c(".csv",
                            ".xlsx",
                            ".txt",
                            ".tsv")),
+      checkboxInput("header", "Header present?",
+                    value = T),
       
       
       # Horizontal line ----
@@ -41,7 +43,9 @@ ui <- fluidPage(
                   NULL),
       selectInput("pval_col", "p-value column",
                   NULL),
-      checkboxInput("unmatched", "Ignore unmatched genes")
+      checkboxInput("unmatched", "Ignore unmatched genes",
+                    value = T)
+
       
   
       
@@ -148,12 +152,13 @@ get_data= function(input){
       switch(extension,
              csv={
                df= read.csv(input$file1$datapath,
-                            header = T,
+                            header = input$header,
                             sep = ",")
              },
              tsv={
                df= read.csv(input$file1$datapath,
-                            sep= "\t")
+                            sep= "\t",
+                            header= input$header)
              },
              xlsx={
                require(openxlsx)
@@ -263,17 +268,14 @@ GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
                       logfc_indice)]
   
  
-  
+  temp= temp[!is.na(temp$logfc) &
+               !is.na(temp$pvalues), ]
   
   colnames(temp)= c("genes", "pvalues", "logfc")
   
   temp= temp[temp$logfc < minlogfc | temp$logfc > 
                maxlogfc, ]
   temp= temp[temp$pvalues <= pvallim, ]
-  
-  
-  temp[is.na(temp$pvalues),]= 0
-  temp[is.na(temp$logfc),]= 0
   if(unmatched_bool){
     temp= temp[temp$genes %in% rownames(percentile_matrix_p_value_RNAseq), ]
   }
@@ -335,20 +337,45 @@ server <- function(input, output, session) {
       colspresent <- ""
     colnames_string <- reactive(get_cols(input))
     colspresent= as.character(colnames_string())
-    
-    if(any(grepl("gene|hgnc|symbol|ident", as.character(colspresent)))){
+    #Symbol defaults
+    if(any(grepl("gene|hgnc|symbol|ident", as.character(colspresent)),
+           ignore.case = T)
+    ){
       defualt_gene_indice=
-        grep("gene|hgnc|symbol|ident", as.character(colspresent), ignore.case = T)[1]
+        grep("gene|hgnc|symbol|ident", as.character(colspresent),
+             ignore.case = T)[1]
+      #if it actually has the hngc symbols
+      if(any(grepl("hgnc|symbol", as.character(colspresent)),
+             ignore.case = T)){
+        defualt_gene_indice=
+          grep("hgnc|symbol", as.character(colspresent), ignore.case = T)[1]
+      }
+      
     }else{
       defualt_gene_indice= 1
     }
-    if(any(grepl("expr|logfc|fc|fold", as.character(colspresent),
+    #logFC defualts
+    if(any(grepl("expr|logfc|fc|fold|log_", as.character(colspresent),
                  ignore.case = T))){
       defualt_logfc= grep("expr|logfc|fc|fold|log_", as.character(colspresent),
                           ignore.case = T)[1]
+      
+      #if it has multiple fcs
+      if(any(grepl("log", as.character(colspresent), ignore.case = T)
+                   &
+                   grepl("fold", as.character(colspresent), ignore.case = T)
+                   )
+             ){
+        bool= grepl("log", as.character(colspresent), ignore.case = T) &
+          grepl("fold", as.character(colspresent), ignore.case = T)
+        
+        defualt_logfc= which(bool)[1]
+      }
     }else{
       defualt_logfc= 2
     }
+    
+    
     if(any(grepl("p-val|adj[_|-]p|pval|p[.]val", as.character(colspresent)))){
       defualt_pval=
         grep("p-val|adj[_|-]p|pval|p[.]val", as.character(colspresent), ignore.case = T)[1]
@@ -383,22 +410,17 @@ server <- function(input, output, session) {
       req(input$logfc_col, cancelOutput = T)
       req(input$pval_col, cancelOutput = T)
       df= get_data(input)
+      
       #session$sendCustomMessage(type = 'georeflect_message',
-      #                          message = 'Running GEOreflect')
+      #                          message = 'Running GEOreflect and plotting ranks')
       pvalue_indice= which(colnames(df) == input$pval_col)
       gene_indice= which(colnames(df) == input$gene_col)
       logfc_indice= which(colnames(df) == input$logfc_col)
-      df= df[df[, logfc_indice] < input$minlogfc | df[, 2] > 
-                                             input$maxlogfc, ]
-      df= df[df[, pvalue_indice] <= input$pvallim, ]
-
-      
-      
       GEOreflect_output= GEOreflect_reranking_RNA_seq(
         the_frame= df,
         pvalue_indice= pvalue_indice,
         gene_indice= gene_indice,
-        logfc_indice= gene_indice,
+        logfc_indice= logfc_indice,
         unmatched_bool = input$unmatched,
         minlogfc= input$minlogfc,
         pvallim= input$pvallim,
@@ -437,8 +459,8 @@ server <- function(input, output, session) {
         req(input$logfc_col, cancelOutput = T)
         req(input$pval_col, cancelOutput = T)
         df= get_data(input)
-        session$sendCustomMessage(type = 'georeflect_message',
-                                  message = 'Running GEOreflect and plotting ranks')
+        #session$sendCustomMessage(type = 'georeflect_message',
+        #                          message = 'Running GEOreflect and plotting ranks')
         pvalue_indice= which(colnames(df) == input$pval_col)
         gene_indice= which(colnames(df) == input$gene_col)
         logfc_indice= which(colnames(df) == input$logfc_col)
@@ -449,7 +471,7 @@ server <- function(input, output, session) {
           the_frame= df,
           pvalue_indice= pvalue_indice,
           gene_indice= gene_indice,
-          logfc_indice= gene_indice,
+          logfc_indice= logfc_indice,
           unmatched_bool = input$unmatched,
           minlogfc= input$minlogfc,
           pvallim= input$pvallim,
@@ -492,11 +514,27 @@ server <- function(input, output, session) {
         
         
         
+      
+        if(input$extremes){
+          GEOreflect_output$opacity= 0.05
+          GEOreflect_output$opacity[GEOreflect_output$Shift ==
+                                      "↑↑" |
+                                      GEOreflect_output$Shift == "↓↓"]= 1
+          tha_plot= ggplot(GEOreflect_output,
+                           aes(y=`GEOreflect rank`, x=`p-value rank`, label=Gene)) +
+            geom_point(size= 3, 
+                     color= "#008080", 
+                     aes(alpha= opacity)) 
+        }else{
+          tha_plot= ggplot(GEOreflect_output,
+                           aes(y=`GEOreflect rank`, x=`p-value rank`, label=Gene)) +
+            geom_point(size= 3, 
+                       color= "#008080") 
+        }
         
-        tha_plot= ggplot(GEOreflect_output,
-                         aes(y=`GEOreflect rank`, x=`p-value rank`, label=Gene)) +
-          geom_point(size= 3, 
-                     color= "#008080") +
+        
+        
+        tha_plot= tha_plot +
           geom_abline(intercept = 0, slope = 1, color="red",
                       linetype="dashed", linewidth=1.5) +
           labs(x="p-value rank",y="GEOreflect rank",title =
@@ -510,6 +548,9 @@ server <- function(input, output, session) {
           ggsave(paste0("~/", input$export_name, "_GEOreflect_ranking_plot.tiff")
                  ,width=input$export_size,height= input$export_size,units = "px")
         }
+        
+        
+        
         
         return(ggplotly(tha_plot))
       

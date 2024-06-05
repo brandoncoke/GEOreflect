@@ -33,7 +33,8 @@ ui <- fluidPage(
                                                ".xlsx",
                                                ".txt",
                                                ".tsv")),
-                          
+                          checkboxInput("header", "Header present?",
+                                        value = T),
                           
                           # Horizontal line ----
                           tags$hr(),
@@ -156,11 +157,12 @@ get_data= function(input){
       switch(extension,
              csv={
                df= read.csv(input$file1$datapath,
-                            header = T,
+                            header = input$header,
                             sep = ",")
              },
              tsv={
                df= read.csv(input$file1$datapath,
+                            header = input$header,
                             sep= "\t")
              },
              xlsx={
@@ -169,7 +171,7 @@ get_data= function(input){
              },
              {
                df= read.csv(input$file1$datapath,
-                            header = T,
+                            header = input$header,
                             sep = ",")
              }
       )
@@ -278,18 +280,12 @@ GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
   temp= the_frame[, c(gene_indice,
                       pvalue_indice,
                       logfc_indice)]
-  temp= temp[!is.na(temp$logfc) &
-               !is.na(temp$pvalues), ]
   
   colnames(temp)= c("genes", "pvalues", "logfc")
-  temp= temp[temp$logfc < minlogfc | temp$logfc > 
-               maxlogfc, ]
-  temp= temp[temp$pvalues <= pvallim, ]
-  if(unmatched_bool){
-    temp= temp[temp$genes %in% rownames(percentile_matrix_p_value_RNAseq), ]
-  }
-  
-  if(!any(temp$genes %in% rownames(percentile_matrix_p_value_RNAseq))){
+  if(class(temp$pvalues) != "numeric" |
+     class(temp$logfc) != "numeric" |
+     class(temp$genes) != "character" |
+     sum(is.na(temp$pvalues) == nrow(temp))){
     return(data.frame(Genes= temp$genes,
                       logFC= temp$logfc,
                       'p-values'= temp$pvalues,
@@ -300,29 +296,55 @@ GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
                       Platform_relative_rank= NA
     ))
   }else{
-    temp$pval_normalised= min_max_normalisation(temp$pvalues)
-    temp$plat_rank= as.integer(apply(temp, 1,
-                                     get_platform_percentile_RNA_seq))
-    temp$GEOreflect= min_max_normalisation(temp$plat_rank)
-    temp$comb_score= apply(temp[,4:5], 1, geometric_mean)
-    output= data.frame(Genes= temp$gene,
-                       logFC= temp$logfc,
-                       'p-values'= temp$pvalues,
-                       pval_rank= rank(temp$pvalues),
-                       Platform_relative_rank= temp$plat_rank,
-                       GEOreflect_rank= rank(temp$comb_score))
+    temp= temp[!is.na(temp$logfc) &
+                 !is.na(temp$pvalues), ]
+    temp= temp[temp$logfc < minlogfc | temp$logfc > 
+                 maxlogfc, ]
+    temp= temp[temp$pvalues <= pvallim, ]
+    if(unmatched_bool){
+      temp= temp[temp$genes %in% rownames(percentile_matrix_p_value_RNAseq), ]
+    }
     
-    
-    
-    median_shift= as.numeric(
-      quantile(abs(output$pval_rank - output$GEOreflect_rank), 
-               0.5))
-    output= output[order(output$GEOreflect_rank),]
-    output$Rank_change= output$GEOreflect_rank - output$pval_rank
-    
-    output$Shift= apply(output, 1, shift_label, median_shift)
-    return(output)
+    if(!any(temp$genes %in% rownames(percentile_matrix_p_value_RNAseq))){
+      return(data.frame(Genes= temp$genes,
+                        logFC= temp$logfc,
+                        'p-values'= temp$pvalues,
+                        pval_rank= rank(temp$pvalues),
+                        GEOreflect_rank= NA,
+                        Rank_change= NA,
+                        Shift= NA,
+                        Platform_relative_rank= NA
+      ))
+    }else{
+      temp$pval_normalised= min_max_normalisation(temp$pvalues)
+      temp$plat_rank= as.integer(apply(temp, 1,
+                                       get_platform_percentile_RNA_seq))
+      temp$GEOreflect= min_max_normalisation(temp$plat_rank)
+      temp$comb_score= apply(temp[,4:5], 1, geometric_mean)
+      output= data.frame(Genes= temp$gene,
+                         logFC= temp$logfc,
+                         'p-values'= temp$pvalues,
+                         pval_rank= rank(temp$pvalues),
+                         Platform_relative_rank= temp$plat_rank,
+                         GEOreflect_rank= rank(temp$comb_score))
+      
+      
+      
+      median_shift= as.numeric(
+        quantile(abs(output$pval_rank - output$GEOreflect_rank), 
+                 0.5))
+      output= output[order(output$GEOreflect_rank),]
+      output$Rank_change= output$GEOreflect_rank - output$pval_rank
+      
+      output$Shift= apply(output, 1, shift_label, median_shift)
+      return(output)
+    }
   }
+  
+  
+  
+  
+  
 }
 
 GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
@@ -338,19 +360,13 @@ GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
                       gene_indice)]
   
   colnames(temp)= c("probe", "pvalues", "logfc", "genes")
-  temp= temp[!is.na(temp$logfc) &
-               !is.na(temp$pvalues), ]
-  temp= temp[temp$logfc < minlogfc | temp$logfc > 
-               maxlogfc, ]
-  temp= temp[temp$pvalues <= pvallim, ]
-
-  if(unmatched_bool){
-    temp= temp[temp$genes %in% rownames(percentile_matrix_p_value_RNAseq), ]
-  }
   
-  if(!any(temp$genes %in% rownames(percentile_matrix_p_value_RNAseq))){
-    return(data.frame(Probe= temp$probe,
-                      Genes= temp$genes,
+  
+  if(class(temp$pvalues) != "numeric" |
+     class(temp$logfc) != "numeric" |
+     class(temp$probe) != "character" |
+     sum(is.na(temp$pvalues) == nrow(temp))){
+    return(data.frame(Genes= temp$genes,
                       logFC= temp$logfc,
                       'p-values'= temp$pvalues,
                       pval_rank= rank(temp$pvalues),
@@ -360,34 +376,59 @@ GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
                       Platform_relative_rank= NA
     ))
   }else{
-    temp$pval_normalised= min_max_normalisation(temp$pvalues)
-    temp$plat_rank= as.integer(apply(temp, 1,
-                                     get_platform_percentile_GPL570))
-    temp$GEOreflect= min_max_normalisation(temp$plat_rank)
-    temp$comb_score= apply(temp[,5:6], 1, geometric_mean)
-    output= data.frame(Probe= temp$probe,
-                       Genes= temp$gene,
-                       logFC= temp$logfc,
-                       'p-values'= temp$pvalues,
-                       pval_rank= rank(temp$pvalues),
-                       Platform_relative_rank= temp$plat_rank,
-                       GEOreflect_rank= rank(temp$comb_score))
+    temp= temp[!is.na(temp$logfc) &
+                 !is.na(temp$pvalues), ]
+    temp= temp[temp$logfc < minlogfc | temp$logfc > 
+                 maxlogfc, ]
+    temp= temp[temp$pvalues <= pvallim, ]
     
-    
-    
-    median_shift= as.numeric(
-      quantile(abs(output$pval_rank - output$GEOreflect_rank), 
-               0.5))
-    output= output[order(output$GEOreflect_rank),]
-    output$Rank_change= output$GEOreflect_rank - output$pval_rank
-    
-    output$Shift= apply(output, 1, shift_label, median_shift)
-    if(merge_probe_gene){
-      output$Genes= paste0(output$Genes, ": ", output$Probe)
+    if(unmatched_bool){
+      temp= temp[temp$genes %in% rownames(percentile_matrix_p_value_RNAseq), ]
     }
     
-    return(output)
+    if(!any(temp$genes %in% rownames(percentile_matrix_p_value_RNAseq))){
+      return(data.frame(Probe= temp$probe,
+                        Genes= temp$genes,
+                        logFC= temp$logfc,
+                        'p-values'= temp$pvalues,
+                        pval_rank= rank(temp$pvalues),
+                        GEOreflect_rank= NA,
+                        Rank_change= NA,
+                        Shift= NA,
+                        Platform_relative_rank= NA
+      ))
+    }else{
+      temp$pval_normalised= min_max_normalisation(temp$pvalues)
+      temp$plat_rank= as.integer(apply(temp, 1,
+                                       get_platform_percentile_GPL570))
+      temp$GEOreflect= min_max_normalisation(temp$plat_rank)
+      temp$comb_score= apply(temp[,5:6], 1, geometric_mean)
+      output= data.frame(Probe= temp$probe,
+                         Genes= temp$gene,
+                         logFC= temp$logfc,
+                         'p-values'= temp$pvalues,
+                         pval_rank= rank(temp$pvalues),
+                         Platform_relative_rank= temp$plat_rank,
+                         GEOreflect_rank= rank(temp$comb_score))
+      
+      
+      
+      median_shift= as.numeric(
+        quantile(abs(output$pval_rank - output$GEOreflect_rank), 
+                 0.5))
+      output= output[order(output$GEOreflect_rank),]
+      output$Rank_change= output$GEOreflect_rank - output$pval_rank
+      
+      output$Shift= apply(output, 1, shift_label, median_shift)
+      if(merge_probe_gene){
+        output$Genes= paste0(output$Genes, ": ", output$Probe)
+      }
+      
+      return(output)
+    }
   }
+  
+  
 }
 
 
@@ -498,12 +539,18 @@ server <- function(input, output, session) {
     paste0(input$pval_col)
   })
   observeEvent(input$georeflect, {
-    
+    req(input$file1, cancelOutput = T)
+    req(input$gene_col, cancelOutput = T)
+    req(input$logfc_col, cancelOutput = T)
+    req(input$pval_col, cancelOutput = T)
+    showModal(modalDialog(
+      title = "GEOreflect is running. This may take some time",
+      paste0("Can take around 3 minutes- needs around 3 GB RAM free."),
+      easyClose = TRUE,
+      footer = NULL
+    ))
     output$georeflect_frame= DT::renderDataTable({
-      req(input$file1, cancelOutput = T)
-      req(input$gene_col, cancelOutput = T)
-      req(input$logfc_col, cancelOutput = T)
-      req(input$pval_col, cancelOutput = T)
+      
       df= get_data(input)
       pvalue_indice= which(colnames(df) == input$pval_col)
       gene_indice= which(colnames(df) == input$gene_col)
@@ -575,6 +622,16 @@ server <- function(input, output, session) {
         req(input$gene_col, cancelOutput = T)
         req(input$logfc_col, cancelOutput = T)
         req(input$pval_col, cancelOutput = T)
+        
+        
+        showModal(modalDialog(
+          title = "Plotting data- will take some time",
+          paste0("Can take around 3 minutes- needs around 3 GB RAM free."),
+          easyClose = TRUE,
+          footer = NULL
+        ))
+        
+        
         df= get_data(input)
         pvalue_indice= which(colnames(df) == input$pval_col)
         gene_indice= which(colnames(df) == input$gene_col)
@@ -608,77 +665,164 @@ server <- function(input, output, session) {
             maxlogfc=input$maxlogfc
           )
         }
-        
-        bool_sum= as.integer(nrow(GEOreflect_output) > 15) +
-          as.integer(nrow(GEOreflect_output) > 50) +
-          as.integer(nrow(GEOreflect_output) > 100) +
-          as.integer(nrow(GEOreflect_output) > 250) +
-          as.integer(nrow(GEOreflect_output) > 750) +
-          as.integer(nrow(GEOreflect_output) > 1000) +
-          as.integer(nrow(GEOreflect_output) > 2000) +
-          as.integer(nrow(GEOreflect_output) > 5000)
-        bool_sum= bool_sum+ 1
-        axes_scale=switch(bool_sum,
-                          axes_scale= seq(0, nrow(GEOreflect_output), 2),
-                          axes_scale= seq(0, nrow(GEOreflect_output), 5),
-                          axes_scale= seq(0, nrow(GEOreflect_output), 25),
-                          axes_scale= seq(0, nrow(GEOreflect_output), 50),
-                          axes_scale= seq(0, nrow(GEOreflect_output), 100),
-                          axes_scale= seq(0, nrow(GEOreflect_output), 250),
-                          axes_scale= seq(0, nrow(GEOreflect_output), 750),
-                          axes_scale= seq(0, nrow(GEOreflect_output), 1000))
-        colnames(GEOreflect_output)[colnames(GEOreflect_output) == 
-                                      "Genes"]= "Gene"
-        
-        
-        colnames(GEOreflect_output)= gsub(
-          "pval_rank",
-          "p-value_rank",
-          colnames(GEOreflect_output))
-        
-        colnames(GEOreflect_output)= gsub(
-          "_",
-          " ",
-          colnames(GEOreflect_output))
-        #export_frame$opacity= 0.01
-        
-        
-        
-        
-        if(input$extremes){
-          GEOreflect_output$opacity= 0.05
-          GEOreflect_output$opacity[GEOreflect_output$Shift ==
-                                      "↑↑" |
-                                      GEOreflect_output$Shift == "↓↓"]= 1
-          tha_plot= ggplot(GEOreflect_output,
-                           aes(y=`GEOreflect rank`, x=`p-value rank`, label=Gene)) +
-            geom_point(size= 3, 
-                       color= "#008080", 
-                       aes(alpha= opacity)) 
+        if(any(as.numeric(GEOreflect_output$GEOreflect_rank))){
+          bool_sum= as.integer(nrow(GEOreflect_output) > 15) +
+            as.integer(nrow(GEOreflect_output) > 50) +
+            as.integer(nrow(GEOreflect_output) > 100) +
+            as.integer(nrow(GEOreflect_output) > 250) +
+            as.integer(nrow(GEOreflect_output) > 500) +
+            as.integer(nrow(GEOreflect_output) > 750) +
+            as.integer(nrow(GEOreflect_output) > 1000) +
+            as.integer(nrow(GEOreflect_output) > 2500) +
+            as.integer(nrow(GEOreflect_output) > 5000)
+          bool_sum= bool_sum+ 1
+          axes_scale=switch(bool_sum,
+                            axes_scale= seq(0, nrow(GEOreflect_output), 2),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 5),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 25),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 50),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 50),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 100),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 100),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 150),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 200))
+          colnames(GEOreflect_output)[colnames(GEOreflect_output) == 
+                                        "Genes"]= "Gene"
+          
+          
+          colnames(GEOreflect_output)= gsub(
+            "pval_rank",
+            "p-value_rank",
+            colnames(GEOreflect_output))
+          
+          colnames(GEOreflect_output)= gsub(
+            "_",
+            " ",
+            colnames(GEOreflect_output))
+          #export_frame$opacity= 0.01
+          
+          
+          
+          
+          if(input$extremes){
+            GEOreflect_output$opacity= 0.05
+            GEOreflect_output$opacity[GEOreflect_output$Shift ==
+                                        "↑↑" |
+                                        GEOreflect_output$Shift == "↓↓"]= 1
+            tha_plot= ggplot(GEOreflect_output,
+                             aes(y=`GEOreflect rank`, x=`p-value rank`, label=Gene)) +
+              geom_point(size= 3, 
+                         color= "#008080", 
+                         aes(alpha= opacity)) 
+          }else{
+            tha_plot= ggplot(GEOreflect_output,
+                             aes(y=`GEOreflect rank`, x=`p-value rank`, label=Gene)) +
+              geom_point(size= 3, 
+                         color= "#008080") 
+          }
+          
+          
+          tha_plot= tha_plot +
+            geom_abline(intercept = 0, slope = 1, color="red",
+                        linetype="dashed", linewidth=1.5) +
+            labs(x="p-value rank",y="GEOreflect rank",title =
+                   "p-value vs GEOreflect rank") +
+            scale_y_continuous(expand = c(0, 0), breaks =  axes_scale) +
+            scale_x_continuous(expand = c(0, 0), breaks =  axes_scale) +
+            brandontheme +
+            guides(alpha = "none")
+          if(input$plot_export){
+            tha_plot
+            ggsave(paste0("~/", input$export_name, "_GEOreflect_ranking_plot.tiff")
+                   ,width=input$export_size,height= input$export_size,units = "px")
+          }
+          
+          return(ggplotly(tha_plot))
         }else{
-          tha_plot= ggplot(GEOreflect_output,
-                           aes(y=`GEOreflect rank`, x=`p-value rank`, label=Gene)) +
-            geom_point(size= 3, 
-                       color= "#008080") 
+          showModal(modalDialog(
+            title = "Check that your gene/probe column is correct",
+            paste0("They should be formatted as HNGC symbols e.g. USP7 or probe IDs e.g. 222589_at"),
+            easyClose = TRUE,
+            footer = NULL
+          ))
+          
+          bool_sum= as.integer(nrow(GEOreflect_output) > 15) +
+            as.integer(nrow(GEOreflect_output) > 50) +
+            as.integer(nrow(GEOreflect_output) > 100) +
+            as.integer(nrow(GEOreflect_output) > 250) +
+            as.integer(nrow(GEOreflect_output) > 500) +
+            as.integer(nrow(GEOreflect_output) > 750) +
+            as.integer(nrow(GEOreflect_output) > 1000) +
+            as.integer(nrow(GEOreflect_output) > 2500) +
+            as.integer(nrow(GEOreflect_output) > 5000)
+          bool_sum= bool_sum+ 1
+          axes_scale=switch(bool_sum,
+                            axes_scale= seq(0, nrow(GEOreflect_output), 2),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 5),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 25),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 50),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 50),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 100),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 100),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 150),
+                            axes_scale= seq(0, nrow(GEOreflect_output), 200))
+          colnames(GEOreflect_output)[colnames(GEOreflect_output) == 
+                                        "Genes"]= "Gene"
+          
+          
+          colnames(GEOreflect_output)= gsub(
+            "pval_rank",
+            "p-value_rank",
+            colnames(GEOreflect_output))
+          
+          colnames(GEOreflect_output)= gsub(
+            "_",
+            " ",
+            colnames(GEOreflect_output))
+          #export_frame$opacity= 0.01
+          
+          
+          
+          
+          if(input$extremes){
+            GEOreflect_output$opacity= 0.05
+            GEOreflect_output$opacity[GEOreflect_output$Shift ==
+                                        "↑↑" |
+                                        GEOreflect_output$Shift == "↓↓"]= 1
+            tha_plot= ggplot(GEOreflect_output,
+                             aes(y=`p-value rank`, x=`p-value rank`, label=Gene)) +
+              geom_point(size= 3, 
+                         color= "#008080", 
+                         aes(alpha= opacity)) 
+          }else{
+            tha_plot= ggplot(GEOreflect_output,
+                             aes(y=`p-value rank`, x=`p-value rank`, label=Gene)) +
+              geom_point(size= 3, 
+                         color= "#008080") 
+          }
+          
+          
+          tha_plot= tha_plot +
+            geom_abline(intercept = 0, slope = 1, color="red",
+                        linetype="dashed", linewidth=1.5) +
+            labs(x="p-value rank",y="GEOreflect rank",title =
+                   "p-value vs GEOreflect rank") +
+            scale_y_continuous(expand = c(0, 0), breaks =  axes_scale) +
+            scale_x_continuous(expand = c(0, 0), breaks =  axes_scale) +
+            brandontheme +
+            guides(alpha = "none")
+          if(input$plot_export){
+            tha_plot
+            ggsave(paste0("~/", input$export_name, "_GEOreflect_ranking_plot.tiff")
+                   ,width=input$export_size,height= input$export_size,units = "px")
+          }
+          
+          return(ggplotly(tha_plot))
         }
         
         
-        tha_plot= tha_plot +
-          geom_abline(intercept = 0, slope = 1, color="red",
-                      linetype="dashed", linewidth=1.5) +
-          labs(x="p-value rank",y="GEOreflect rank",title =
-                 "p-value vs GEOreflect rank") +
-          scale_y_continuous(expand = c(0, 0), breaks =  axes_scale) +
-          scale_x_continuous(expand = c(0, 0), breaks =  axes_scale) +
-          brandontheme +
-          guides(alpha = "none")
-        if(input$plot_export){
-          tha_plot
-          ggsave(paste0("~/", input$export_name, "_GEOreflect_ranking_plot.tiff")
-                 ,width=input$export_size,height= input$export_size,units = "px")
-        }
         
-        return(ggplotly(tha_plot))
+        
         
       }
       

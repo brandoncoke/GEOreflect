@@ -3,19 +3,20 @@
 ## A R shiny app and command line interface for reranking DEG lists from microarray and RNA-seq datasets
 A large scale metanalysis of microarray and RNA-seq platforms has identified a subset of genes with higher propensity for differential expression irrespective of the tissue used or the experiment used and current approaches to ranking DEGs solely focus on the relative significance of a gene's p-value to other genes without accounting for this and this may obscure more relevant DEGs. 
 \\
-GEOreflect in contrast combines the relative significance of a given gene both within the study of interest and when compared to pre-existing studies when ranking the most relevant genes. This in turn accounts for genes intrinsic propensity for differential expression alongside its relative significant to other genes within the study of interest. To use the R shiny app for this DEG ranking method install the dependencies.
+GEOreflect in contrast combines the relative significance of a given gene both within the study of interest and when compared to pre-existing studies when ranking the most relevant genes. This in turn accounts for genes intrinsic propensity for differential expression alongside its relative significant to other genes within the study of interest. To use the R shiny app for this DEG ranking method install the dependencies- six in total and are installed using the script below.
 ```R
 if("shiny" %in% rownames(installed.packages()) == FALSE){
-  install.packages("shiny")}
+  install.packages("shiny", quiet= T)}
 if("openxlsx" %in% rownames(installed.packages()) == FALSE){
-  install.packages("openxlsx")}
-if("ggplot2" %in% rownames(installed.packages()) == FALSE){
-  install.packages("ggplot2")}
+  install.packages("openxlsx", quiet= T)}
+if("shinyFiles" %in% rownames(installed.packages()) == FALSE){
+  install.packages("shinyFiles", quiet= T)}
 if("DT" %in% rownames(installed.packages()) == FALSE){
-  install.packages("DT")}
+  install.packages("DT", quiet= T)}
+if("ggplot2" %in% rownames(installed.packages()) == FALSE){
+  install.packages("ggplot2", quiet= T)}
 if("plotly" %in% rownames(installed.packages()) == FALSE){
   install.packages("plotly")}
-#If solely working with DEG lists from RNA-seq datasets
 ```
 Once done download the RDS images of the percentile frames used to rerank genes. Once downloaded- in the terminal ```git clone brandoncoke::GEOreflect``` then decompress the zip file. Insert the .RDS files into the GEOreflect directory load the R interpreter and type.
 ```R

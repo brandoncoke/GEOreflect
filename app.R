@@ -38,7 +38,7 @@ ui <- fluidPage(
       
       # Horizontal line ----
       tags$hr(),
-      selectInput("gene_col", "Gene column",
+      selectInput("gene_col", "Gene column- HNGC symbols like USP7",
                   NULL),
       selectInput("logfc_col", "Log fold column",
                   NULL),
@@ -189,18 +189,19 @@ get_cols= function(input){
       if(grepl("[.]xlsx$", input$file1$datapath)){
         extension= "xlsx"
       }
-      if(grepl("[.]tsv$", input$file1$datapath)){
+      if(grepl("[.]tsv$|[.]txt$", input$file1$datapath)){
         extension= "tsv"
       }
       
       switch(extension,
              csv={
                df= read.csv(input$file1$datapath,
-                            header = T,
+                            header = input$header,
                             sep = ",")
              },
              tsv={
                df= read.csv(input$file1$datapath,
+                            input$header,
                             sep= "\t")
              },
              xlsx={
@@ -209,7 +210,7 @@ get_cols= function(input){
              },
              {
                df= read.csv(input$file1$datapath,
-                            header = T,
+                            input$header,
                             sep = ",")
              }
       )
@@ -394,15 +395,31 @@ server <- function(input, output, session) {
     }else{
       defualt_logfc= 2
     }
+    defualt_pval= 3
     
-    
-    if(any(grepl("p-val|adj[_|-]p|pval|p[.]val", as.character(colspresent)))){
+    if(any(grepl("p-val|pval|p[.]val", as.character(colspresent), 
+                 ignore.case = T))){
+      
       defualt_pval=
-        grep("p-val|adj[_|-]p|pval|p[.]val", as.character(colspresent), ignore.case = T)[1]
-    }else{
-      defualt_pval= 3
+        which(grepl("p-val|pval|p[.]val", as.character(colspresent), 
+                    ignore.case = T))
+      defualt_pval= defualt_pval[1]
+      
     }
-    
+    #better if using non adjusted p-values
+    if(any(grepl("p-val|pval|p[.]val", as.character(colspresent), 
+                 ignore.case = T) & 
+           !grepl("adj", as.character(colspresent), 
+                 ignore.case = T))){
+      
+      defualt_pval=
+        which(grepl("p-val|pval|p[.]val", as.character(colspresent), 
+               ignore.case = T) & 
+           !grepl("adj", as.character(colspresent), 
+                  ignore.case = T))
+      defualt_pval= defualt_pval[1]
+      
+    }
   
     
     updateSelectInput(session,
@@ -414,7 +431,7 @@ server <- function(input, output, session) {
                       choices= colspresent,
                       selected = as.character(colspresent)[defualt_logfc])
     updateSelectInput(session,
-                      "gene_col", "Gene column",
+                      "gene_col", "Gene column- HNGC symbols like USP7",
                       choices= colspresent,
                       selected = as.character(colspresent)[defualt_gene_indice])
     

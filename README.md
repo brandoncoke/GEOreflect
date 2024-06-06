@@ -20,11 +20,11 @@ if("plotly" %in% rownames(installed.packages()) == FALSE){
 ```
 Once done download the RDS images of the percentile frames used to rerank genes. Once downloaded- in the terminal ```git clone brandoncoke::GEOreflect``` then decompress the zip file. Insert the .RDS files into the GEOreflect directory load the R interpreter and type.
 ```R
-setwd('~/GEOreflect')
+setwd('~/')
 runApp('app_and_gpl570.R') 
 #alternatively use 
-#runApp('app.R') 
+#runApp('app.R') #this is just for RNA-seq datasets- requires less resources
 ```
-The app has 3 tabs- the data import, reranking table and plotting tab. The app accepts DEG lists formatted as .csvs, .txt, .tsv and .xslx. Once imported- select the gene, log fold and p-value columns. If you are working with GPL570 microarray data you will also need the probe ID column. Once selected- run GEOreflect by clicking the 'Run GEOreflect' button. You export the reranked list into the working directory- the GEOreflect directory. The third tab contains the plot which can be produced by either clicking the 'Replot' button or on the second tab the 'Plot reranks' box. This plot can be exported by selecting the 'Export plot' box or using the interactive plotly plot on the side and clicking the print icon in the top right.
+The app has 3 tabs- the data import, reranking table and plotting tab. The app accepts DEG lists formatted as .csvs, .txt, .tsv and .xlsx. Once imported- select the gene, log fold and p-value columns. If you are working with GPL570 microarray data you will also need the probe ID column after selecting the GPL570 checkbox. Once the columns have been selected- run GEOreflect by clicking the 'Run GEOreflect' button on the next tab- "Reranking and export". You can then export the reranked list into the working directory- on windows by default your Documents folder by selecting the checkbox for export. The third tab contains the plot which can be produced by either clicking the 'Replot' button or on the second tab the 'Plot reranks' box. This plot can be exported by selecting the 'Export plot' box or using the interactive plotly plot on the side and clicking the print icon in the top right.
 ![GEOreflect shiny app](./images/guide.png)
-Alternatively, the functions for the GPL570 and RNA-seq GEOreflect reranking can found in the GEOreflect_funcitons.R file. This only requires the percentile frames to be loaded into the environment- i.e. load("percentile_matrix_p_value_RNAseq.RDS").
+Alternatively, the functions for the GPL570 and RNA-seq GEOreflect reranking can found in the GEOreflect_funciton.R file. This only requires the percentile frames to be loaded into the environment- i.e. load("percentile_matrix_p_value_RNAseq.RDS"); see line with #examples. 2.5GB of free memory is recommended.

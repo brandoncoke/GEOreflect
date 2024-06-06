@@ -38,7 +38,7 @@ ui <- fluidPage(
                           
                           # Horizontal line ----
                           tags$hr(),
-                          selectInput("gene_col", "Gene column",
+                          selectInput("gene_col", "Gene column- HNGC symbols like USP7",
                                       NULL),
                           selectInput("logfc_col", "Log fold column",
                                       NULL),
@@ -340,11 +340,6 @@ GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
       return(output)
     }
   }
-  
-  
-  
-  
-  
 }
 
 GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
@@ -495,14 +490,31 @@ server <- function(input, output, session) {
     }
     
     
-    if(any(grepl("p-val|adj[_|-]p|pval|p[.]val", as.character(colspresent),
+    if(any(grepl("p-val|pval|p[.]val", as.character(colspresent), 
                  ignore.case = T))){
+      
       defualt_pval=
-        grep("p-val|adj[_|-]p|pval|p[.]val", as.character(colspresent),
-             ignore.case = T)[1]
-    }else{
-      defualt_pval= 3
+        which(grepl("p-val|pval|p[.]val", as.character(colspresent), 
+                    ignore.case = T))
+      defualt_pval= defualt_pval[1]
+      
     }
+    #better if using non adjusted p-values- this switches to it if 
+    #both p-values and adjusted p-values
+    if(any(grepl("p-val|pval|p[.]val", as.character(colspresent), 
+                 ignore.case = T) & 
+           !grepl("adj", as.character(colspresent), 
+                  ignore.case = T))){
+      
+      defualt_pval=
+        which(grepl("p-val|pval|p[.]val", as.character(colspresent), 
+                    ignore.case = T) & 
+                !grepl("adj", as.character(colspresent), 
+                       ignore.case = T))
+      defualt_pval= defualt_pval[1]
+      
+    }
+    
     defualt_probe= 1
     if(any(grepl("ID|_at|probe|affy|hg_u133", as.character(colspresent),
                  ignore.case = T))){
@@ -523,7 +535,7 @@ server <- function(input, output, session) {
                       choices= colspresent,
                       selected = as.character(colspresent)[defualt_logfc])
     updateSelectInput(session,
-                      "gene_col", "Gene column",
+                      "gene_col", "Gene column- HNGC symbols like USP7",
                       choices= colspresent,
                       selected = as.character(colspresent)[defualt_gene_indice])
     if(input$GPL570){

@@ -45,25 +45,16 @@ get_platform_percentile_GPL570= function(probe_and_pvalue= c("222589_at", 4.43E-
 }
 
 
-GEOreflect_reranking_RNA_seq= function(the_frame, 
-                                       pvalue_indice,
-                                       gene_indice,
-                                       logfc_indice,
+
+GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
+                                       logfc_indice, 
                                        minlogfc= -1,
                                        pvallim= 0.05,
                                        maxlogfc=1,
                                        unmatched_bool= T){
-  #if(!("percentile_matrix_p_value_RNAseq" %in% ls())){
-  #  stop("Missing percentile frame from reranking- place the RDS image in your home directory and use load(\"~\\percentile_matrix_p_value_RNAseq.RDS\")")
-  #}
-  
   temp= the_frame[, c(gene_indice,
                       pvalue_indice,
                       logfc_indice)]
-  
-  
-  
-  
   
   colnames(temp)= c("genes", "pvalues", "logfc")
   if(class(temp$pvalues) != "numeric" |
@@ -89,7 +80,18 @@ GEOreflect_reranking_RNA_seq= function(the_frame,
       temp= temp[temp$genes %in% rownames(percentile_matrix_p_value_RNAseq), ]
     }
     
-    if(!any(temp$genes %in% rownames(percentile_matrix_p_value_RNAseq))){
+    if(!any(temp$genes %in% rownames(percentile_matrix_p_value_RNAseq)) |
+       nrow(temp) == 0){
+      if(nrow(temp) == 0){
+        showModal(modalDialog(
+          title = "Filtering step too stringent",
+          paste0("Increase the p-value limit or bounds for upper and lower log fold change"),
+          easyClose = TRUE,
+          footer = NULL
+        ))
+      }
+      
+      
       return(data.frame(Genes= temp$genes,
                         logFC= temp$logfc,
                         'p-values'= temp$pvalues,
@@ -100,23 +102,23 @@ GEOreflect_reranking_RNA_seq= function(the_frame,
                         Platform_relative_rank= NA
       ))
     }else{
-      temp$pval_normalised= min_max_normalisation(temp$pvalues)
+      temp$pval_normalised= min_max_normalisation(-temp$pvalues)
       temp$plat_rank= as.integer(apply(temp, 1,
                                        get_platform_percentile_RNA_seq))
-      temp$GEOreflect= min_max_normalisation(temp$plat_rank)
-      temp$comb_score= apply(temp[,4:5], 1, geometric_mean)
+      temp$GEOreflect= ((1000 - temp$plat_rank)+1)/ 1000
+      temp$comb_score= apply(temp[,c(4,6)], 1, geometric_mean)
       output= data.frame(Genes= temp$gene,
                          logFC= temp$logfc,
                          'p-values'= temp$pvalues,
                          pval_rank= rank(temp$pvalues),
                          Platform_relative_rank= temp$plat_rank,
-                         GEOreflect_rank= rank(temp$comb_score))
+                         GEOreflect_rank= rank(-temp$comb_score))
       
       
       
       median_shift= as.numeric(
         quantile(abs(output$pval_rank - output$GEOreflect_rank), 
-                 0.5))
+                 0.75))
       output= output[order(output$GEOreflect_rank),]
       output$Rank_change= output$GEOreflect_rank - output$pval_rank
       
@@ -131,12 +133,7 @@ GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
                                       unmatched_bool= T,
                                       minlogfc= -1,
                                       pvallim= 0.05,
-                                      maxlogfc=1,
-                                      merge_probe_gene= F){
-  
-  #if(!("percentile_matrix_p_value_RNAseq" %in% ls())){
-  #  stop("Missing percentile frame from reranking- place the RDS image in your home directory and use load(\"~\\percentile_matrix.RDS\")")
-  #}
+                                      maxlogfc=1){
   temp= the_frame[, c(probe_indice,
                       pvalue_indice,
                       logfc_indice,
@@ -169,7 +166,18 @@ GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
       temp= temp[temp$genes %in% rownames(percentile_matrix_p_value_RNAseq), ]
     }
     
-    if(!any(temp$genes %in% rownames(percentile_matrix_p_value_RNAseq))){
+    if(!any(temp$genes %in% rownames(percentile_matrix_p_value_RNAseq))
+       | nrow(temp) == 0){
+      
+      if(nrow(temp) == 0){
+        showModal(modalDialog(
+          title = "Filtering step too stringent",
+          paste0("Increase the p-value limit or bounds for upper and lower log fold change"),
+          easyClose = TRUE,
+          footer = NULL
+        ))
+      }
+      
       return(data.frame(Probe= temp$probe,
                         Genes= temp$genes,
                         logFC= temp$logfc,
@@ -181,26 +189,28 @@ GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
                         Platform_relative_rank= NA
       ))
     }else{
-      temp$pval_normalised= min_max_normalisation(temp$pvalues)
+      temp$pval_normalised= min_max_normalisation(rank(temp$pvalues))
       temp$plat_rank= as.integer(apply(temp, 1,
                                        get_platform_percentile_GPL570))
-      temp$GEOreflect= min_max_normalisation(temp$plat_rank)
-      temp$comb_score= apply(temp[,5:6], 1, geometric_mean)
+      temp$GEOreflect= ((1000 - temp$plat_rank)+1)/ 1000
+      temp$comb_score= apply(temp[,c(5,7)], 1, geometric_mean)
+      
       output= data.frame(Probe= temp$probe,
                          Genes= temp$gene,
                          logFC= temp$logfc,
                          'p-values'= temp$pvalues,
                          pval_rank= rank(temp$pvalues),
                          Platform_relative_rank= temp$plat_rank,
-                         GEOreflect_rank= rank(temp$comb_score))
+                         GEOreflect_rank= rank(-temp$comb_score))
       
       
       
       median_shift= as.numeric(
         quantile(abs(output$pval_rank - output$GEOreflect_rank), 
-                 0.5))
+                 0.75))
       output= output[order(output$GEOreflect_rank),]
       output$Rank_change= output$GEOreflect_rank - output$pval_rank
+      
       output$Shift= apply(output, 1, shift_label, median_shift)
       return(output)
     }

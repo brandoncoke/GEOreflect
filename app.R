@@ -1,6 +1,7 @@
 library(shiny)
 require(openxlsx)
 require(ggplot2)
+require(DESeq2)
 require(DT)
 require(plotly)
 #60MB limit
@@ -34,16 +35,23 @@ ui <- fluidPage(
                            ".tsv")),
       checkboxInput("header", "Header present?",
                     value = T),
+      tags$hr(),
+      selectizeInput(
+        'CTRL_cols', 'Select control columns', choices = NULL,
+        multiple = TRUE),
+      selectizeInput(
+        'treated_cols', 'Select treated columns',
+        choices = NULL, multiple = TRUE),
+      checkboxInput("Normalise reads", "Raw reads as input?",
+                    value = T),
       
       
       # Horizontal line ----
-      tags$hr(),
-      selectInput("gene_col", "Gene column- HNGC symbols like USP7",
-                  NULL),
-      selectInput("logfc_col", "Log fold column",
-                  NULL),
-      selectInput("pval_col", "p-value column",
-                  NULL),
+
+      selectInput("id_type", "Gene id type- HGNC like CTNNB1, ensembl- ENSG00000168036 or entrez like 1499",
+                  c("HGNC",
+                    "Entrez id",
+                    "Ensembl id")),
       checkboxInput("unmatched", "Ignore unmatched genes",
                     value = T)
 
@@ -137,6 +145,7 @@ tabPanel("Plotting ranks",
 
 #server code
 load("percentile_matrix_p_value_RNAseq.RDS")
+conversion_table= read.csv("conversion_table.csv")
 get_data= function(input){
   req(input$file1, cancelOutput = T)
   tryCatch(
@@ -149,7 +158,6 @@ get_data= function(input){
       if(grepl("[.]tsv$", input$file1$datapath)){
         extension= "tsv"
       }
-      
       switch(extension,
              csv={
                df= read.csv(input$file1$datapath,
@@ -179,54 +187,8 @@ get_data= function(input){
   )
   return(df)
 }
-#can't reuse the code...
-get_cols= function(input){
-  req(input$file1, cancelOutput = T)
-  tryCatch(
-    {
-      #check extension
-      extension= "csv"
-      if(grepl("[.]xlsx$", input$file1$datapath)){
-        extension= "xlsx"
-      }
-      if(grepl("[.]tsv$|[.]txt$", input$file1$datapath)){
-        extension= "tsv"
-      }
-      
-      switch(extension,
-             csv={
-               df= read.csv(input$file1$datapath,
-                            header = input$header,
-                            sep = ",")
-             },
-             tsv={
-               df= read.csv(input$file1$datapath,
-                            input$header,
-                            sep= "\t")
-             },
-             xlsx={
-               require(openxlsx)
-               df= openxlsx::read.xlsx(input$file1$datapath)
-             },
-             {
-               df= read.csv(input$file1$datapath,
-                            input$header,
-                            sep = ",")
-             }
-      )
-    },
-    error = function(e) {
-      # return a safeError if a parsing error occurs
-      stop(safeError(e))
-    }
-  )
-  return(colnames(df))
-  
-}
 
-min_max_normalisation= function(vector=1:10){ #min max normalisation- 1 = highest, 0= lowest
-  (vector-min(vector))/(max(vector)-min(vector))
-}
+
 geometric_mean= function(values= c(1,2,1)){
   (prod(values))^(1/length(values))
 }
@@ -257,23 +219,18 @@ shift_label= function(x= output[1, ], median_shift){
   return(label)
 }
 
+cut_isoforms= function(id= "ENSG00000066827.11"){
+  unlist(strsplit(id, "[.]"))[1]
+}
 
-GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
-                                       logfc_indice,
+
+GEOreflect_reranking_RNA_seq= function(the_frame,
                                        minlogfc= -1,
                                        pvallim= 0.05,
                                        maxlogfc=1,
                                        unmatched_bool= T){
-
-  temp= the_frame[, c(gene_indice,
-                      pvalue_indice,
-                      logfc_indice)]
-
-  
- 
-
-  
-  colnames(temp)= c("genes", "pvalues", "logfc")
+  temp= the_frame
+  colnames(temp)= c("genes", "pvalues", "logfc", "average_expression")
   if(class(temp$pvalues) != "numeric" |
      class(temp$logfc) != "numeric" |
      class(temp$genes) != "character" |
@@ -297,7 +254,18 @@ GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
       temp= temp[temp$genes %in% rownames(percentile_matrix_p_value_RNAseq), ]
     }
     
-    if(!any(temp$genes %in% rownames(percentile_matrix_p_value_RNAseq))){
+    if(!any(temp$genes %in% rownames(percentile_matrix_p_value_RNAseq)) |
+       nrow(temp) == 0){
+      if(nrow(temp) == 0){
+        showModal(modalDialog(
+          title = "Filtering step too stringent",
+          paste0("Increase the p-value limit or bounds for upper and lower log fold change"),
+          easyClose = TRUE,
+          footer = NULL
+        ))
+      }
+      
+      
       return(data.frame(Genes= temp$genes,
                         logFC= temp$logfc,
                         'p-values'= temp$pvalues,
@@ -308,23 +276,26 @@ GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
                         Platform_relative_rank= NA
       ))
     }else{
-      temp$pval_normalised= min_max_normalisation(temp$pvalues)
+      temp$pval_normalised= rank(-temp$pvalues)/(length(temp$pvalues))
+      temp$express_norm= rank(temp$average_expression)/(length(temp$average_expression))
+      
       temp$plat_rank= as.integer(apply(temp, 1,
                                        get_platform_percentile_RNA_seq))
-      temp$GEOreflect= min_max_normalisation(temp$plat_rank)
-      temp$comb_score= apply(temp[,4:5], 1, geometric_mean)
+      temp$GEOreflect= ((1000 - temp$plat_rank)+1)/ 1000
+      temp$comb_score= apply(temp[,c("GEOreflect", "pval_normalised", 
+                                     "express_norm")], 1, geometric_mean)
       output= data.frame(Genes= temp$gene,
                          logFC= temp$logfc,
                          'p-values'= temp$pvalues,
                          pval_rank= rank(temp$pvalues),
                          Platform_relative_rank= temp$plat_rank,
-                         GEOreflect_rank= rank(temp$comb_score))
+                         GEOreflect_rank= rank(-temp$comb_score))
       
       
       
       median_shift= as.numeric(
         quantile(abs(output$pval_rank - output$GEOreflect_rank), 
-                 0.5))
+                 0.75))
       output= output[order(output$GEOreflect_rank),]
       output$Rank_change= output$GEOreflect_rank - output$pval_rank
       
@@ -332,157 +303,375 @@ GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
       return(output)
     }
   }
-  
-  
-  
 }
 
 
 server <- function(input, output, session) {
   
   output$contents <- DT::renderDataTable({
-    
-    # input$file1 will be NULL initially. After the user selects
-    # and uploads a file, head of that data file by default,
-    # or all rows if selected, will be shown.
-    
     req(input$file1)
+    
     df= get_data(input)
+    default_control= NULL
+    if(any(grepl("CON|CTRL|GFP|scram|WT", as.character(colnames(df)), 
+                 ignore.case = T))){
+      default_control=
+        which(grepl("CON|CTRL|GFP|scram|WT", as.character(colnames(df)), 
+                    ignore.case = T))
+    }
+    default_treated= NULL
+    if(any(grepl("treated|sh|KO|KD|CRISPR", as.character(colnames(df)), 
+                 ignore.case = T) &
+       !grepl("CON|CTRL|GFP|scram|WT", as.character(colnames(df)), 
+             ignore.case = T))
+       ){
+      default_treated=
+        which(grepl("treated|sh|KO|KD|CRISPR", as.character(colnames(df)), 
+                    ignore.case = T) &
+                !grepl("CON|CTRL|GFP|scram|WT", as.character(colnames(df)), 
+                       ignore.case = T))
+    }
+    
+    
+
+    updateSelectizeInput(session,
+                      "CTRL_cols", 'Select control samples',
+                      choices= colnames(df),
+                      selected= colnames(df)[default_control])
+    updateSelectizeInput(session,
+                         "treated_cols", 'Select treated samples',
+                         choices= colnames(df),
+                         selected= colnames(df)[default_treated])
+    colnames(df)[1]= "ID_col"
+    
+    
+    updateSelectInput(session,
+                      "id_col", "Gene identifier column",
+                      choices= colnames(df))
+
+    ids= df[, 1]
+    default_id= "HGNC"
+    if(sum(sum(ids %in% conversion_table$entrezgene_id) > sum(ids %in% conversion_table$gene))){
+      default_id= "Entrez id"
+    }
+    if(sum(sum(ids %in% conversion_table$ensembl_gene_id) > sum(ids %in% conversion_table$gene))){
+      default_id= "Ensembl id"
+    }
+    updateSelectInput(session,
+                      "id_type", "Gene id type- HGNC like CTNNB1, ensembl- ENSG00000168036 or entrez like 1499",
+                      c("HGNC",
+                        "Entrez id",
+                        "Ensembl id"),
+                      selected = default_id)
     
     return(df)
-    
   })
-  observe({
-    colspresent= input$file1
-    if (is.null(colspresent))
-      colspresent <- ""
-    colnames_string <- reactive(get_cols(input))
-    colspresent= as.character(colnames_string())
-    #Symbol defaults
-    if(any(grepl("gene|hgnc|symbol|ident", as.character(colspresent)),
-           ignore.case = T)
-    ){
-      defualt_gene_indice=
-        grep("gene|hgnc|symbol|ident", as.character(colspresent),
-             ignore.case = T)[1]
-      #if it actually has the hngc symbols
-      if(any(grepl("hgnc|symbol", as.character(colspresent)),
-             ignore.case = T)){
-        defualt_gene_indice=
-          grep("hgnc|symbol", as.character(colspresent), ignore.case = T)[1]
-      }
-      
-    }else{
-      defualt_gene_indice= 1
-    }
-    #logFC defualts
-    if(any(grepl("expr|logfc|fc|fold|log_", as.character(colspresent),
-                 ignore.case = T))){
-      defualt_logfc= grep("expr|logfc|fc|fold|log_", as.character(colspresent),
-                          ignore.case = T)[1]
-      
-      #if it has multiple fcs
-      if(any(grepl("log", as.character(colspresent), ignore.case = T)
-                   &
-                   grepl("fold", as.character(colspresent), ignore.case = T)
-                   )
-             ){
-        bool= grepl("log", as.character(colspresent), ignore.case = T) &
-          grepl("fold", as.character(colspresent), ignore.case = T)
-        
-        defualt_logfc= which(bool)[1]
-      }
-    }else{
-      defualt_logfc= 2
-    }
-    defualt_pval= 3
-    
-    if(any(grepl("p-val|pval|p[.]val", as.character(colspresent), 
-                 ignore.case = T))){
-      
-      defualt_pval=
-        which(grepl("p-val|pval|p[.]val", as.character(colspresent), 
-                    ignore.case = T))
-      defualt_pval= defualt_pval[1]
-      
-    }
-    #better if using non adjusted p-values
-    if(any(grepl("p-val|pval|p[.]val", as.character(colspresent), 
-                 ignore.case = T) & 
-           !grepl("adj", as.character(colspresent), 
-                 ignore.case = T))){
-      
-      defualt_pval=
-        which(grepl("p-val|pval|p[.]val", as.character(colspresent), 
-               ignore.case = T) & 
-           !grepl("adj", as.character(colspresent), 
-                  ignore.case = T))
-      defualt_pval= defualt_pval[1]
-      
-    }
   
-    
-    updateSelectInput(session,
-                      "pval_col", "p-value column",
-                      choices= colspresent,
-                      selected = as.character(colspresent)[defualt_pval])
-    updateSelectInput(session,
-                      "logfc_col", "Log fold column",
-                      choices= colspresent,
-                      selected = as.character(colspresent)[defualt_logfc])
-    updateSelectInput(session,
-                      "gene_col", "Gene column- HNGC symbols like USP7",
-                      choices= colspresent,
-                      selected = as.character(colspresent)[defualt_gene_indice])
-    
-  })
-  output$pval_selected <- renderText({
-    paste0(input$pval_col)
-  })
+  #GEOreflect 
   observeEvent(input$georeflect, {
-
+    req(input$file1, cancelOutput = T)
+    req(input$CTRL_cols, cancelOutput = T)
+    req(input$treated_cols, cancelOutput = T)
+    req(input$id_type, cancelOutput = T)
     output$georeflect_frame= DT::renderDataTable({
-      req(input$file1, cancelOutput = T)
-      req(input$gene_col, cancelOutput = T)
-      req(input$logfc_col, cancelOutput = T)
-      req(input$pval_col, cancelOutput = T)
-      showModal(modalDialog(
-        title = "GEOreflect is running. This may take some time",
-        paste0("Can take around 3 minutes- needs around 3 GB RAM free."),
-        easyClose = TRUE,
-        footer = NULL
-      ))
+    df= get_data(input)
+
+    reads= df[,c(input$CTRL_cols, 
+                 input$treated_cols)]
+    reads= as.data.frame(reads)
+    ids= as.character(df[, 1])
+    reads$ids= ids
+    if(input$id_type == "Entrez id"){
+      colnames(reads)[ncol(reads)]= "entrezgene_id"
+      
+      reads= merge(conversion_table, reads, all= F)
+    }
+    if(input$id_type == "Ensembl id"){
+      reads$ids= as.character(
+        lapply(reads$ids, cut_isoforms))
+      colnames(reads)[ncol(reads)]= "ensembl_gene_id"
+      reads= merge(conversion_table, reads, all= F)
+    }
+    if(input$id_type == "HGNC"){
+      colnames(reads)[ncol(reads)]= "gene"
+    }
+    rownames(reads)= paste0(reads$gene,";", 1:nrow(reads))
+    reads= reads[,-c(1:3)]
+    
+    
+    gsms <- paste0(
+      c(
+        rep("0", length(input$CTRL_cols)),
+        rep("1", length(input$treated_cols))
+      ),
+      collapse = ""
+    )
+    sml <- strsplit(gsms, split="")[[1]]
+    
+    # filter out excluded samples (marked as "X")
+    sel <- which(sml != "X")
+    sml <- sml[sel]
+    
+    # group membership for samples
+    gs <- factor(sml)
+    groups <- make.names(c("CTRL","Treated"))
+    levels(gs) <- groups
+    sample_info <- data.frame(Group = gs, row.names = colnames(reads))
+    
+    # pre-filter low count genes
+    # keep genes with at least N counts > 10, where N = size of smallest group
+    keep <- rowSums( reads >= 10 ) >= min(table(gs))
+    reads <- reads[keep, ]
+    
+    ds <- DESeqDataSetFromMatrix(countData=reads, colData=sample_info, design= ~Group)
+    
+    ds <- DESeq(ds, test="Wald", sfType="poscount")
+    
+    # extract results for top genes table
+    r <- results (ds, contrast=c("Group", groups[1], groups[2]), alpha=0.05, pAdjustMethod ="fdr")
+    DEG_frame= as.data.frame(r)
+    DEG_frame$Gene= rownames(DEG_frame)
+    DEG_frame$Gene= as.character(lapply(DEG_frame$Gene, 
+                                        function(x){
+                                          unlist(strsplit(x, ";"))[1]
+                                        }))
+    
+    DEG_frame= DEG_frame[, c("Gene", "pvalue", "log2FoldChange", "baseMean")]
+    output= GEOreflect_reranking_RNA_seq(the_frame= DEG_frame,
+                                         minlogfc= input$minlogfc,
+                                         pvallim= input$pvallim,
+                                         maxlogfc= input$maxlogfc,
+                                         unmatched_bool= input$unmatched)
+
+    })
+  })
+  observeEvent(input$tha_plot_button, {
+    showModal(modalDialog(
+      title = "Plotting data- will take some time",
+      paste0("Can take around 3 minutes- needs around 3 GB RAM free."),
+      easyClose = TRUE,
+      footer = NULL
+    ))
+    req(input$file1, cancelOutput = T)
+    req(input$id_type, cancelOutput = T)
+    req(input$CTRL_cols, cancelOutput = T)
+    req(input$treated_cols, cancelOutput = T)
+    req(input$id_type, cancelOutput = T)
+    output$georeflect_plot= renderPlotly({
       df= get_data(input)
-      gene_indice= which(colnames(df) == input$gene_col)
-      logfc_indice= which(colnames(df) == input$logfc_col)
-      pvalue_indice= which(colnames(df) == input$pval_col)
+      ids= df[, 1]
+      reads= df[,c(input$CTRL_cols, 
+                   input$treated_cols)]
+      reads= as.data.frame(reads)
       
-      GEOreflect_output= GEOreflect_reranking_RNA_seq(
-        the_frame= df,
-        pvalue_indice= pvalue_indice,
-        gene_indice= gene_indice,
-        logfc_indice= logfc_indice,
-        unmatched_bool = input$unmatched,
-        minlogfc= input$minlogfc,
-        pvallim= input$pvallim,
-        maxlogfc=input$maxlogfc
-      )
-      
-      
-      if (input$download) {
-        write.csv(GEOreflect_output,
-                  paste0("~/", input$export_name, "_GEOreflect_ranking.csv"),
-                  sep="")
+      reads$ids= ids
+      if(input$id_type == "Entrez id"){
+        colnames(reads)[ncol(reads)]= "entrezgene_id"
+        
+        reads= merge(conversion_table, reads, all= F)
       }
-      colnames(GEOreflect_output)= gsub(
-        "_",
-        " ",
-        colnames(GEOreflect_output))
+      if(input$id_type == "Ensembl id"){
+        reads$ids= as.character(
+          lapply(reads$ids, cut_isoforms))
+        colnames(reads)[ncol(reads)]= "ensembl_gene_id"
+        reads= merge(conversion_table, reads, all= F)
+      }
+      if(input$id_type == "HGNC"){
+        colnames(reads)[ncol(reads)]= "gene"
+      }
+      rownames(reads)= paste0(reads$gene,";", 1:nrow(reads))
+      reads= reads[,-c(1:3)]
       
       
+      gsms <- paste0(
+        c(
+          rep("0", length(input$CTRL_cols)),
+          rep("1", length(input$treated_cols))
+        ),
+        collapse = ""
+      )
+      sml <- strsplit(gsms, split="")[[1]]
+      
+      # filter out excluded samples (marked as "X")
+      sel <- which(sml != "X")
+      sml <- sml[sel]
+      
+      # group membership for samples
+      gs <- factor(sml)
+      groups <- make.names(c("CTRL","Treated"))
+      levels(gs) <- groups
+      sample_info <- data.frame(Group = gs, row.names = colnames(reads))
+      
+      # pre-filter low count genes
+      # keep genes with at least N counts > 10, where N = size of smallest group
+      keep <- rowSums( reads >= 10 ) >= min(table(gs))
+      reads <- reads[keep, ]
+      
+      ds <- DESeqDataSetFromMatrix(countData=reads, colData=sample_info, design= ~Group)
+      
+      ds <- DESeq(ds, test="Wald", sfType="poscount")
+      
+      # extract results for top genes table
+      r <- results (ds, contrast=c("Group", groups[1], groups[2]), alpha=0.05, pAdjustMethod ="fdr")
+      DEG_frame= as.data.frame(r)
+      DEG_frame$Gene= rownames(DEG_frame)
+      DEG_frame$Gene= as.character(lapply(DEG_frame$Gene, 
+                                          function(x){
+                                            unlist(strsplit(x, ";"))[1]
+                                          }))
+      
+      DEG_frame= DEG_frame[, c("Gene", "pvalue", "log2FoldChange", "baseMean")]
+      GEOreflect_output= GEOreflect_reranking_RNA_seq(the_frame= DEG_frame,
+                                           minlogfc= input$minlogfc,
+                                           pvallim= input$pvallim,
+                                           maxlogfc= input$maxlogfc,
+                                           unmatched_bool= input$unmatched)
       
       
-      return(GEOreflect_output)
+      if(any(as.numeric(GEOreflect_output$GEOreflect_rank))){
+        bool_sum= as.integer(nrow(GEOreflect_output) > 15) +
+          as.integer(nrow(GEOreflect_output) > 50) +
+          as.integer(nrow(GEOreflect_output) > 100) +
+          as.integer(nrow(GEOreflect_output) > 250) +
+          as.integer(nrow(GEOreflect_output) > 500) +
+          as.integer(nrow(GEOreflect_output) > 750) +
+          as.integer(nrow(GEOreflect_output) > 1000) +
+          as.integer(nrow(GEOreflect_output) > 2500) +
+          as.integer(nrow(GEOreflect_output) > 5000)
+        bool_sum= bool_sum+ 1
+        axes_scale=switch(bool_sum,
+                          axes_scale= seq(0, nrow(GEOreflect_output), 2),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 5),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 25),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 50),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 50),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 100),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 100),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 150),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 200))
+        colnames(GEOreflect_output)[colnames(GEOreflect_output) == 
+                                      "Genes"]= "Gene"
+        
+        
+        colnames(GEOreflect_output)= gsub(
+          "pval_rank",
+          "p-value_rank",
+          colnames(GEOreflect_output))
+        
+        colnames(GEOreflect_output)= gsub(
+          "_",
+          " ",
+          colnames(GEOreflect_output))
+        #export_frame$opacity= 0.01
+        
+        
+        
+        
+        if(input$extremes){
+          GEOreflect_output$opacity= 0.05
+          GEOreflect_output$opacity[GEOreflect_output$Shift ==
+                                      "↑↑" |
+                                      GEOreflect_output$Shift == "↓↓"]= 1
+          tha_plot= ggplot(GEOreflect_output,
+                           aes(y=`GEOreflect rank`, x=`p-value rank`, label=Gene)) +
+            geom_point(size= 3, 
+                       color= "#008080", 
+                       aes(alpha= opacity)) 
+        }else{
+          tha_plot= ggplot(GEOreflect_output,
+                           aes(y=`GEOreflect rank`, x=`p-value rank`, label=Gene)) +
+            geom_point(size= 3, 
+                       color= "#008080") 
+        }
+        
+        
+        
+        tha_plot= tha_plot +
+          geom_abline(intercept = 0, slope = 1, color="red",
+                      linetype="dashed", linewidth=1.5) +
+          labs(x="p-value rank",y="GEOreflect rank",title =
+                 "p-value vs GEOreflect rank") +
+          scale_y_continuous(expand = c(0, 0), breaks =  axes_scale) +
+          scale_x_continuous(expand = c(0, 0), breaks =  axes_scale) +
+          brandontheme +
+          guides(alpha = "none")
+        if(input$plot_export){
+          tha_plot
+          ggsave(paste0("~/", input$export_name, "_GEOreflect_ranking_plot.tiff")
+                 ,width=input$export_size,height= input$export_size,units = "px")
+        }
+        
+        
+        
+        
+        return(ggplotly(tha_plot))
+      }else{
+        showModal(modalDialog(
+          title = "Check that your gene/probe column is correct",
+          paste0("They should be formatted as HNGC symbols e.g. USP7, ABCA1 and WNT5A"),
+          easyClose = TRUE,
+          footer = NULL
+        ))
+        bool_sum= as.integer(nrow(GEOreflect_output) > 15) +
+          as.integer(nrow(GEOreflect_output) > 50) +
+          as.integer(nrow(GEOreflect_output) > 100) +
+          as.integer(nrow(GEOreflect_output) > 250) +
+          as.integer(nrow(GEOreflect_output) > 500) +
+          as.integer(nrow(GEOreflect_output) > 750) +
+          as.integer(nrow(GEOreflect_output) > 1000) +
+          as.integer(nrow(GEOreflect_output) > 2500) +
+          as.integer(nrow(GEOreflect_output) > 5000)
+        bool_sum= bool_sum+ 1
+        axes_scale=switch(bool_sum,
+                          axes_scale= seq(0, nrow(GEOreflect_output), 2),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 5),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 25),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 50),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 50),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 100),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 100),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 150),
+                          axes_scale= seq(0, nrow(GEOreflect_output), 200))
+        colnames(GEOreflect_output)[colnames(GEOreflect_output) == 
+                                      "Genes"]= "Gene"
+        
+        
+        colnames(GEOreflect_output)= gsub(
+          "pval_rank",
+          "p-value_rank",
+          colnames(GEOreflect_output))
+        
+        colnames(GEOreflect_output)= gsub(
+          "_",
+          " ",
+          colnames(GEOreflect_output))
+        #export_frame$opacity= 0.01
+        
+        
+        tha_plot= ggplot(GEOreflect_output,
+                         aes(y=`p-value rank`, x=`p-value rank`, label=Gene)) +
+          geom_point(size= 3, 
+                     color= "#008080")  +
+          geom_abline(intercept = 0, slope = 1, color="red",
+                      linetype="dashed", linewidth=1.5) +
+          labs(x="p-value rank",y="GEOreflect rank",title =
+                 "p-value vs GEOreflect rank") +
+          scale_y_continuous(expand = c(0, 0), breaks =  axes_scale) +
+          scale_x_continuous(expand = c(0, 0), breaks =  axes_scale) +
+          brandontheme +
+          guides(alpha = "none")
+        if(input$plot_export){
+          tha_plot
+          ggsave(paste0("~/", input$export_name, "_GEOreflect_ranking_plot.tiff")
+                 ,width=input$export_size,height= input$export_size,units = "px")
+        }
+        
+        
+        
+        
+        return(ggplotly(tha_plot))
+      }
+      
       
     })
   })
@@ -492,196 +681,7 @@ server <- function(input, output, session) {
   
   
   
-  observeEvent(input$tha_plot_button, {
-    showModal(modalDialog(
-      title = "Plotting data- will take some time",
-      paste0("Can take around 3 minutes- needs around 3 GB RAM free."),
-      easyClose = TRUE,
-      footer = NULL
-    ))
-    output$georeflect_plot= renderPlotly({
-      if (input$tha_plot_button) {
-        req(input$file1, cancelOutput = T)
-        req(input$gene_col, cancelOutput = T)
-        req(input$logfc_col, cancelOutput = T)
-        req(input$pval_col, cancelOutput = T)
-        df= get_data(input)
-        #session$sendCustomMessage(type = 'georeflect_message',
-        #                          message = 'Running GEOreflect and plotting ranks')
-        pvalue_indice= which(colnames(df) == input$pval_col)
-        gene_indice= which(colnames(df) == input$gene_col)
-        logfc_indice= which(colnames(df) == input$logfc_col)
-        #df= df[df[,2] < input$minlogfc | df[, 2] > 
-        #         input$maxlogfc, ]
-        #df= df[df[, 3] <= input$pvallim, ]
-        GEOreflect_output= GEOreflect_reranking_RNA_seq(
-          the_frame= df,
-          pvalue_indice= pvalue_indice,
-          gene_indice= gene_indice,
-          logfc_indice= logfc_indice,
-          unmatched_bool = input$unmatched,
-          minlogfc= input$minlogfc,
-          pvallim= input$pvallim,
-          maxlogfc=input$maxlogfc
-        )
-        
-        
-        if(any(as.numeric(GEOreflect_output$GEOreflect_rank))){
-          bool_sum= as.integer(nrow(GEOreflect_output) > 15) +
-            as.integer(nrow(GEOreflect_output) > 50) +
-            as.integer(nrow(GEOreflect_output) > 100) +
-            as.integer(nrow(GEOreflect_output) > 250) +
-            as.integer(nrow(GEOreflect_output) > 500) +
-            as.integer(nrow(GEOreflect_output) > 750) +
-            as.integer(nrow(GEOreflect_output) > 1000) +
-            as.integer(nrow(GEOreflect_output) > 2500) +
-            as.integer(nrow(GEOreflect_output) > 5000)
-          bool_sum= bool_sum+ 1
-          axes_scale=switch(bool_sum,
-                            axes_scale= seq(0, nrow(GEOreflect_output), 2),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 5),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 25),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 50),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 50),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 100),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 100),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 150),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 200))
-          colnames(GEOreflect_output)[colnames(GEOreflect_output) == 
-                                        "Genes"]= "Gene"
-          
-          
-          colnames(GEOreflect_output)= gsub(
-            "pval_rank",
-            "p-value_rank",
-            colnames(GEOreflect_output))
-          
-          colnames(GEOreflect_output)= gsub(
-            "_",
-            " ",
-            colnames(GEOreflect_output))
-          #export_frame$opacity= 0.01
-          
-          
-          
-          
-          if(input$extremes){
-            GEOreflect_output$opacity= 0.05
-            GEOreflect_output$opacity[GEOreflect_output$Shift ==
-                                        "↑↑" |
-                                        GEOreflect_output$Shift == "↓↓"]= 1
-            tha_plot= ggplot(GEOreflect_output,
-                             aes(y=`GEOreflect rank`, x=`p-value rank`, label=Gene)) +
-              geom_point(size= 3, 
-                         color= "#008080", 
-                         aes(alpha= opacity)) 
-          }else{
-            tha_plot= ggplot(GEOreflect_output,
-                             aes(y=`GEOreflect rank`, x=`p-value rank`, label=Gene)) +
-              geom_point(size= 3, 
-                         color= "#008080") 
-          }
-          
-          
-          
-          tha_plot= tha_plot +
-            geom_abline(intercept = 0, slope = 1, color="red",
-                        linetype="dashed", linewidth=1.5) +
-            labs(x="p-value rank",y="GEOreflect rank",title =
-                   "p-value vs GEOreflect rank") +
-            scale_y_continuous(expand = c(0, 0), breaks =  axes_scale) +
-            scale_x_continuous(expand = c(0, 0), breaks =  axes_scale) +
-            brandontheme +
-            guides(alpha = "none")
-          if(input$plot_export){
-            tha_plot
-            ggsave(paste0("~/", input$export_name, "_GEOreflect_ranking_plot.tiff")
-                   ,width=input$export_size,height= input$export_size,units = "px")
-          }
-          
-          
-          
-          
-          return(ggplotly(tha_plot))
-        }else{
-          showModal(modalDialog(
-            title = "Check that your gene/probe column is correct",
-            paste0("They should be formatted as HNGC symbols e.g. USP7, ABCA1 and WNT5A"),
-            easyClose = TRUE,
-            footer = NULL
-          ))
-          bool_sum= as.integer(nrow(GEOreflect_output) > 15) +
-            as.integer(nrow(GEOreflect_output) > 50) +
-            as.integer(nrow(GEOreflect_output) > 100) +
-            as.integer(nrow(GEOreflect_output) > 250) +
-            as.integer(nrow(GEOreflect_output) > 500) +
-            as.integer(nrow(GEOreflect_output) > 750) +
-            as.integer(nrow(GEOreflect_output) > 1000) +
-            as.integer(nrow(GEOreflect_output) > 2500) +
-            as.integer(nrow(GEOreflect_output) > 5000)
-          bool_sum= bool_sum+ 1
-          axes_scale=switch(bool_sum,
-                            axes_scale= seq(0, nrow(GEOreflect_output), 2),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 5),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 25),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 50),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 50),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 100),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 100),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 150),
-                            axes_scale= seq(0, nrow(GEOreflect_output), 200))
-          colnames(GEOreflect_output)[colnames(GEOreflect_output) == 
-                                        "Genes"]= "Gene"
-          
-          
-          colnames(GEOreflect_output)= gsub(
-            "pval_rank",
-            "p-value_rank",
-            colnames(GEOreflect_output))
-          
-          colnames(GEOreflect_output)= gsub(
-            "_",
-            " ",
-            colnames(GEOreflect_output))
-          #export_frame$opacity= 0.01
-
-          
-        tha_plot= ggplot(GEOreflect_output,
-                         aes(y=`p-value rank`, x=`p-value rank`, label=Gene)) +
-          geom_point(size= 3, 
-                     color= "#008080")  +
-            geom_abline(intercept = 0, slope = 1, color="red",
-                        linetype="dashed", linewidth=1.5) +
-            labs(x="p-value rank",y="GEOreflect rank",title =
-                   "p-value vs GEOreflect rank") +
-            scale_y_continuous(expand = c(0, 0), breaks =  axes_scale) +
-            scale_x_continuous(expand = c(0, 0), breaks =  axes_scale) +
-            brandontheme +
-            guides(alpha = "none")
-          if(input$plot_export){
-            tha_plot
-            ggsave(paste0("~/", input$export_name, "_GEOreflect_ranking_plot.tiff")
-                   ,width=input$export_size,height= input$export_size,units = "px")
-          }
-          
-          
-          
-          
-          return(ggplotly(tha_plot))
-        }
-        
-       
-      
-      }
-      
-      
-      
-      
-      
-      
-      
-    })})
-  #Ends here   
-  }
+#ends here  
+}
 # Create Shiny app ----
 shinyApp(ui, server)

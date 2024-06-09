@@ -3,7 +3,7 @@ require(openxlsx)
 require(ggplot2)
 require(DT)
 require(plotly)
-#60 MB limit
+#60MB limit
 options(shiny.maxRequestSize=60*1024^2)
 brandontheme=theme(
   panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
@@ -19,128 +19,124 @@ ui <- fluidPage(
   tags$head(tags$script(src = "message-handler.js")),
   navbarPage("GEOreflect analysis", id="nav",
              tabPanel("DEG list upload",
-                      sidebarLayout(
-                        
-                        # Sidebar panel for inputs ----
-                        sidebarPanel(
-                          
-                          # Input: Select a file ----
-                          fileInput("file1", "Choose a .csv, .tsv or .xlsx DEG list",
-                                    multiple = FALSE,
-                                    accept = c("text/csv",
-                                               "text/comma-separated-values,text/plain",
-                                               ".csv",
-                                               ".xlsx",
-                                               ".txt",
-                                               ".tsv")),
-                          checkboxInput("header", "Header present?",
-                                        value = T),
-                          
-                          # Horizontal line ----
-                          tags$hr(),
-                          selectInput("gene_col", "Gene column- HNGC symbols like USP7",
-                                      NULL),
-                          selectInput("logfc_col", "Log fold column",
-                                      NULL),
-                          selectInput("pval_col", "p-value column",
-                                      NULL),
-                          checkboxInput("unmatched", "Ignore unmatched genes",
-                                        value= T),
-                          tags$hr(),
-                          checkboxInput("GPL570", "Using GPL570 platform IDs?"),
-                          selectInput("probe_col", "Column with probe IDs e.g. 222589_at",
-                                      NULL)
-                          
-                          
-                          
-                        ),
-                        
-                        # Main panel for displaying outputs ----
-                        mainPanel(
-                          
-                          # Output: Data file ----
-                          DT::dataTableOutput("contents")
-                          
-                        )
-                        
-                      )
-             ),
-             tabPanel("Reranking and export",
-                      fluidRow(
-                        column(4,
-                               sliderInput("minlogfc",
-                                           "Log fold lower bound",
-                                           min = -5,  max = 0, value = -1))
-                        ,
-                        column(4,
-                               sliderInput("maxlogfc",
-                                           "Log fold upper bound",
-                                           min = 0,  max = 5,  value = 1))
-                        ,
-                        column(4,
-                               sliderInput("pvallim",
-                                           "p-value limit",
-                                           min = 0,  max = 1,  value = 0.05))
-                      ),
-                      column(4,
-                             actionButton("georeflect", "Run GEOreflect",
-                                          class = "btn-primary")
-                      ),
-                      column(4,
-                             textInput("export_name", "Name for export file",
-                                       placeholder = "A_comparison")),
-                      column(4,
-                             checkboxInput("download", "Export ranked file?\n Check working directory")),
-                      column(4,
-                             checkboxInput("tha_plot_button", "Plot ranks- see next tab- it will take some time")),
-                      # Output: Data file ----
-                      DT::dataTableOutput("georeflect_frame")),
-             tabPanel("Plotting ranks",
-                      sidebarLayout(
-                        
-                        # Sidebar panel for inputs ----
-                        sidebarPanel(
-                          checkboxInput("extremes", "Highlight extreme differences"),
-                          tags$hr(),
-                          sliderInput("minlogfc",
-                                      "Log fold lower bound",
-                                      min = -5,  max = 0, value = -1),
-                          sliderInput("maxlogfc",
-                                      "Log fold upper bound",
-                                      min = 0,  max = 5,  value = 1),
-                          sliderInput("pvallim",
-                                      "p-value limit",
-                                      min = 0,  max = 1,  value = 0.05),
-                          
-                          actionButton("tha_plot_button", "Replot",
-                                       class = "btn-primary"),
-                          checkboxInput("plot_export", "Export plot"),
-                          sliderInput("export_size",
-                                      "Plot export size",
-                                      min = 500,  max = 7500,  value = 2000),
-                          
-                          
-                          
-                        ),
-                        #main plot for rank
-                        mainPanel(
-                          
-                          plotlyOutput("georeflect_plot",
-                                       width= "700px",
-                                       height = "700px")
-                          
-                        )
-                      ))
-             
+  
+  sidebarLayout(
+    
+    # Sidebar panel for inputs ----
+    sidebarPanel(
+      
+      # Input: Select a file ----
+      fileInput("file1", "Choose a .csv, .tsv or .xlsx DEG list",
+                multiple = FALSE,
+                accept = c(".csv",
+                           ".xlsx",
+                           ".txt",
+                           ".tsv")),
+      checkboxInput("header", "Header present?",
+                    value = T),
+      
+      
+      # Horizontal line ----
+      tags$hr(),
+      selectInput("gene_col", "Gene column- HNGC symbols like USP7",
+                  NULL),
+      selectInput("logfc_col", "Log fold column",
+                  NULL),
+      selectInput("pval_col", "p-value column",
+                  NULL),
+      checkboxInput("unmatched", "Ignore unmatched genes",
+                    value = T)
+
+      
+  
+      
+    ),
+    
+    # Main panel for displaying outputs ----
+    mainPanel(
+      
+      # Output: Data file ----
+      DT::dataTableOutput("contents")
+      
+    )
+    
   )
-  #This is the end
+),
+tabPanel("Reranking and export",
+         fluidRow(
+           column(4,
+                  sliderInput("minlogfc",
+                              "Log fold lower bound",
+                              min = -5,  max = 0, value = -1))
+           ,
+           column(4,
+                  sliderInput("maxlogfc",
+                              "Log fold upper bound",
+                              min = 0,  max = 5,  value = 1))
+           ,
+           column(4,
+                  sliderInput("pvallim",
+                              "p-value limit",
+                              min = 0,  max = 1,  value = 0.05))
+           ),
+           column(4,
+                  actionButton("georeflect", "Run GEOreflect",
+                               class = "btn-primary")
+           ),
+           column(4,
+                  textInput("export_name", "Name for export file",
+                            placeholder = "A_comparison")),
+         column(4,
+                checkboxInput("download", "Export ranked file?\n Check working directory")),
+         column(4,
+                checkboxInput("tha_plot_button", "Plot ranks- see next tab- it will take some time")),
+             # Output: Data file ----
+             DT::dataTableOutput("georeflect_frame")),
+tabPanel("Plotting ranks",
+         sidebarLayout(
+           
+           # Sidebar panel for inputs ----
+           sidebarPanel(
+             checkboxInput("extremes", "Highlight extreme differences"),
+             tags$hr(),
+             sliderInput("minlogfc",
+                         "Log fold lower bound",
+                         min = -5,  max = 0, value = -1),
+             sliderInput("maxlogfc",
+                         "Log fold upper bound",
+                         min = 0,  max = 5,  value = 1),
+             sliderInput("pvallim",
+                         "p-value limit",
+                         min = 0,  max = 1,  value = 0.05),
+             
+             actionButton("tha_plot_button", "Replot",
+                          class = "btn-primary"),
+             checkboxInput("plot_export", "Export plot"),
+             sliderInput("export_size",
+                         "Plot export size",
+                         min = 500,  max = 7500,  value = 2000),
+             
+             
+
+           ),
+           #main plot for rank
+           mainPanel(
+             
+             plotlyOutput("georeflect_plot",
+                          width= "700px",
+                          height = "700px")
+             
+           )
+         ))
+        
+)
+#This is the end
 )
 
 
 
 #server code
 load("percentile_matrix_p_value_RNAseq.RDS")
-load('percentile_matrix.RDS')
 get_data= function(input){
   req(input$file1, cancelOutput = T)
   tryCatch(
@@ -162,8 +158,8 @@ get_data= function(input){
              },
              tsv={
                df= read.csv(input$file1$datapath,
-                            header = input$header,
-                            sep= "\t")
+                            sep= "\t",
+                            header= input$header)
              },
              xlsx={
                require(openxlsx)
@@ -171,7 +167,7 @@ get_data= function(input){
              },
              {
                df= read.csv(input$file1$datapath,
-                            header = input$header,
+                            header = T,
                             sep = ",")
              }
       )
@@ -193,18 +189,19 @@ get_cols= function(input){
       if(grepl("[.]xlsx$", input$file1$datapath)){
         extension= "xlsx"
       }
-      if(grepl("[.]tsv$", input$file1$datapath)){
+      if(grepl("[.]tsv$|[.]txt$", input$file1$datapath)){
         extension= "tsv"
       }
       
       switch(extension,
              csv={
                df= read.csv(input$file1$datapath,
-                            header = T,
+                            header = input$header,
                             sep = ",")
              },
              tsv={
                df= read.csv(input$file1$datapath,
+                            input$header,
                             sep= "\t")
              },
              xlsx={
@@ -213,7 +210,7 @@ get_cols= function(input){
              },
              {
                df= read.csv(input$file1$datapath,
-                            header = T,
+                            input$header,
                             sep = ",")
              }
       )
@@ -256,19 +253,8 @@ shift_label= function(x= output[1, ], median_shift){
     label= paste0(label, label)
   }
   
-  
-  return(label)
-}
 
-get_platform_percentile_GPL570= function(probe_and_pvalue= c("222589_at", 4.43E-09)){
-  if(as.numeric(probe_and_pvalue[2])== 0 | 
-     !(probe_and_pvalue[1] %in% rownames(percentile_matrix))){
-    return(1)
-  }else{
-    gene= c(t(probe_and_pvalue[1])) #why does this work no clue but gets the string i need- t is transpose so eh#
-    which.min(as.numeric(percentile_matrix[rownames(percentile_matrix) == gene, ]) <
-                as.numeric(probe_and_pvalue[2])) #why do I need to coerce to float- how knows but safer as input can be treated as a string
-  }
+  return(label)
 }
 
 GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
@@ -353,105 +339,6 @@ GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
   }
 }
 
-GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
-                                      logfc_indice, probe_indice=1,
-                                      unmatched_bool= T,
-                                      minlogfc= -1,
-                                      pvallim= 0.05,
-                                      maxlogfc=1,
-                                      merge_probe_gene= F){
-  temp= the_frame[, c(probe_indice,
-                      pvalue_indice,
-                      logfc_indice,
-                      gene_indice)]
-  
-  colnames(temp)= c("probe", "pvalues", "logfc", "genes")
-  
-  
-  if(class(temp$pvalues) != "numeric" |
-     class(temp$logfc) != "numeric" |
-     class(temp$probe) != "character" |
-     sum(is.na(temp$pvalues) == nrow(temp))){
-    return(data.frame(Genes= temp$genes,
-                      logFC= temp$logfc,
-                      'p-values'= temp$pvalues,
-                      pval_rank= rank(temp$pvalues),
-                      GEOreflect_rank= NA,
-                      Rank_change= NA,
-                      Shift= NA,
-                      Platform_relative_rank= NA
-    ))
-  }else{
-    temp= temp[!is.na(temp$logfc) &
-                 !is.na(temp$pvalues), ]
-    temp= temp[temp$logfc < minlogfc | temp$logfc > 
-                 maxlogfc, ]
-    temp= temp[temp$pvalues <= pvallim, ]
-    
-    if(unmatched_bool){
-      temp= temp[temp$genes %in% rownames(percentile_matrix_p_value_RNAseq), ]
-    }
-    
-    if(!any(temp$genes %in% rownames(percentile_matrix_p_value_RNAseq))
-       | nrow(temp) == 0){
-      
-      if(nrow(temp) == 0){
-        showModal(modalDialog(
-          title = "Filtering step too stringent",
-          paste0("Increase the p-value limit or bounds for upper and lower log fold change"),
-          easyClose = TRUE,
-          footer = NULL
-        ))
-      }
-      
-      return(data.frame(Probe= temp$probe,
-                        Genes= temp$genes,
-                        logFC= temp$logfc,
-                        'p-values'= temp$pvalues,
-                        pval_rank= rank(temp$pvalues),
-                        GEOreflect_rank= NA,
-                        Rank_change= NA,
-                        Shift= NA,
-                        Platform_relative_rank= NA
-      ))
-    }else{
-      temp$pval_normalised= min_max_normalisation(rank(temp$pvalues))
-      temp$plat_rank= as.integer(apply(temp, 1,
-                                       get_platform_percentile_GPL570))
-      temp$GEOreflect= ((1000 - temp$plat_rank)+1)/ 1000
-      temp$comb_score= apply(temp[,c(5,7)], 1, geometric_mean)
-      
-      output= data.frame(Probe= temp$probe,
-                         Genes= temp$gene,
-                         logFC= temp$logfc,
-                         'p-values'= temp$pvalues,
-                         pval_rank= rank(temp$pvalues),
-                         Platform_relative_rank= temp$plat_rank,
-                         GEOreflect_rank= rank(-temp$comb_score))
-      
-      
-      
-      median_shift= as.numeric(
-        quantile(abs(output$pval_rank - output$GEOreflect_rank), 
-                 0.75))
-      output= output[order(output$GEOreflect_rank),]
-      output$Rank_change= output$GEOreflect_rank - output$pval_rank
-      
-      output$Shift= apply(output, 1, shift_label, median_shift)
-      if(merge_probe_gene){
-        output$Genes= paste0(output$Genes, ": ", output$Probe)
-      }
-      
-      return(output)
-    }
-  }
-  
-  
-}
-
-
-
-
 
 server <- function(input, output, session) {
   
@@ -473,7 +360,6 @@ server <- function(input, output, session) {
       colspresent <- ""
     colnames_string <- reactive(get_cols(input))
     colspresent= as.character(colnames_string())
-    
     #Symbol defaults
     if(any(grepl("gene|hgnc|symbol|ident", as.character(colspresent)),
            ignore.case = T)
@@ -499,10 +385,10 @@ server <- function(input, output, session) {
       
       #if it has multiple fcs
       if(any(grepl("log", as.character(colspresent), ignore.case = T)
-             &
-             grepl("fold", as.character(colspresent), ignore.case = T)
-      )
-      ){
+                   &
+                   grepl("fold", as.character(colspresent), ignore.case = T)
+                   )
+             ){
         bool= grepl("log", as.character(colspresent), ignore.case = T) &
           grepl("fold", as.character(colspresent), ignore.case = T)
         
@@ -511,7 +397,7 @@ server <- function(input, output, session) {
     }else{
       defualt_logfc= 2
     }
-    
+    defualt_pval= 3
     
     if(any(grepl("p-val|pval|p[.]val", as.character(colspresent), 
                  ignore.case = T))){
@@ -522,32 +408,21 @@ server <- function(input, output, session) {
       defualt_pval= defualt_pval[1]
       
     }
-    #better if using non adjusted p-values- this switches to it if 
-    #both p-values and adjusted p-values
+    #better if using non adjusted p-values
     if(any(grepl("p-val|pval|p[.]val", as.character(colspresent), 
                  ignore.case = T) & 
            !grepl("adj", as.character(colspresent), 
-                  ignore.case = T))){
+                 ignore.case = T))){
       
       defualt_pval=
         which(grepl("p-val|pval|p[.]val", as.character(colspresent), 
-                    ignore.case = T) & 
-                !grepl("adj", as.character(colspresent), 
-                       ignore.case = T))
+               ignore.case = T) & 
+           !grepl("adj", as.character(colspresent), 
+                  ignore.case = T))
       defualt_pval= defualt_pval[1]
       
     }
-    
-    defualt_probe= 1
-    if(any(grepl("ID|_at|probe|affy|hg_u133", as.character(colspresent),
-                 ignore.case = T))){
-      grep("p-val|adj[_|-]p|pval", as.character(colspresent), ignore.case = T)[1]
-    }else{
-      defualt_probe= 1
-    }
-    
-    
-    
+  
     
     updateSelectInput(session,
                       "pval_col", "p-value column",
@@ -561,70 +436,39 @@ server <- function(input, output, session) {
                       "gene_col", "Gene column- HNGC symbols like USP7",
                       choices= colspresent,
                       selected = as.character(colspresent)[defualt_gene_indice])
-    if(input$GPL570){
-      updateSelectInput(session,
-                        "probe_col", "Column with probe IDs e.g. 222589_at",
-                        choices= colspresent,
-                        selected = as.character(colspresent)[defualt_probe])
-    }
-    
     
   })
   output$pval_selected <- renderText({
     paste0(input$pval_col)
   })
   observeEvent(input$georeflect, {
-    req(input$file1, cancelOutput = T)
-    req(input$gene_col, cancelOutput = T)
-    req(input$logfc_col, cancelOutput = T)
-    req(input$pval_col, cancelOutput = T)
-    showModal(modalDialog(
-      title = "GEOreflect is running. This may take some time",
-      paste0("Can take around 3 minutes- needs around 3 GB RAM free."),
-      easyClose = TRUE,
-      footer = NULL
-    ))
+
     output$georeflect_frame= DT::renderDataTable({
-      
+      req(input$file1, cancelOutput = T)
+      req(input$gene_col, cancelOutput = T)
+      req(input$logfc_col, cancelOutput = T)
+      req(input$pval_col, cancelOutput = T)
+      showModal(modalDialog(
+        title = "GEOreflect is running. This may take some time",
+        paste0("Can take around 3 minutes- needs around 3 GB RAM free."),
+        easyClose = TRUE,
+        footer = NULL
+      ))
       df= get_data(input)
-      pvalue_indice= which(colnames(df) == input$pval_col)
       gene_indice= which(colnames(df) == input$gene_col)
       logfc_indice= which(colnames(df) == input$logfc_col)
-      probe_indice= which(colnames(df) == input$probe_col)
-      df= df[df[, logfc_indice] < input$minlogfc | df[, 2] > 
-               input$maxlogfc, ]
-      df= df[df[, pvalue_indice] <= input$pvallim, ]
+      pvalue_indice= which(colnames(df) == input$pval_col)
       
-      
-      if(input$GPL570){
-
-        GEOreflect_output= GEOreflect_reranking_GPL570(
-          the_frame= df,
-          pvalue_indice= pvalue_indice,
-          gene_indice= gene_indice,
-          logfc_indice= logfc_indice,
-          unmatched_bool = input$unmatched,
-          probe_indice = probe_indice,
-          minlogfc= input$minlogfc,
-          pvallim= input$pvallim,
-          maxlogfc=input$maxlogfc
-        )
-      }else{
-        df= df[df[, logfc_indice] < input$minlogfc | df[, 2] > 
-                 input$maxlogfc, ]
-        df= df[df[, pvalue_indice] <= input$pvallim, ]
-        GEOreflect_output= GEOreflect_reranking_RNA_seq(
-          the_frame= df,
-          pvalue_indice= pvalue_indice,
-          gene_indice= gene_indice,
-          logfc_indice= logfc_indice,
-          unmatched_bool = input$unmatched,
-          minlogfc= input$minlogfc,
-          pvallim= input$pvallim,
-          maxlogfc=input$maxlogfc
-        )
-      }
-      
+      GEOreflect_output= GEOreflect_reranking_RNA_seq(
+        the_frame= df,
+        pvalue_indice= pvalue_indice,
+        gene_indice= gene_indice,
+        logfc_indice= logfc_indice,
+        unmatched_bool = input$unmatched,
+        minlogfc= input$minlogfc,
+        pvallim= input$pvallim,
+        maxlogfc=input$maxlogfc
+      )
       
       
       if (input$download) {
@@ -651,55 +495,39 @@ server <- function(input, output, session) {
   
   
   observeEvent(input$tha_plot_button, {
+    showModal(modalDialog(
+      title = "Plotting data- will take some time",
+      paste0("Can take around 3 minutes- needs around 3 GB RAM free."),
+      easyClose = TRUE,
+      footer = NULL
+    ))
     output$georeflect_plot= renderPlotly({
       if (input$tha_plot_button) {
         req(input$file1, cancelOutput = T)
         req(input$gene_col, cancelOutput = T)
         req(input$logfc_col, cancelOutput = T)
         req(input$pval_col, cancelOutput = T)
-        
-        
-        showModal(modalDialog(
-          title = "Plotting data- will take some time",
-          paste0("Can take around 3 minutes- needs around 3 GB RAM free."),
-          easyClose = TRUE,
-          footer = NULL
-        ))
-        
-        
         df= get_data(input)
+        #session$sendCustomMessage(type = 'georeflect_message',
+        #                          message = 'Running GEOreflect and plotting ranks')
         pvalue_indice= which(colnames(df) == input$pval_col)
         gene_indice= which(colnames(df) == input$gene_col)
         logfc_indice= which(colnames(df) == input$logfc_col)
-        probe_indice= which(colnames(df) == input$probe_col)
         #df= df[df[,2] < input$minlogfc | df[, 2] > 
         #         input$maxlogfc, ]
         #df= df[df[, 3] <= input$pvallim, ]
-        if(input$GPL570){
-          GEOreflect_output= GEOreflect_reranking_GPL570(
-            the_frame= df,
-            pvalue_indice= pvalue_indice,
-            gene_indice= gene_indice,
-            logfc_indice= logfc_indice,
-            unmatched_bool = input$unmatched,
-            probe_indice = probe_indice,
-            merge_probe_gene= T,
-            minlogfc= input$minlogfc,
-            pvallim= input$pvallim,
-            maxlogfc=input$maxlogfc
-          )
-        }else{
-          GEOreflect_output= GEOreflect_reranking_RNA_seq(
-            the_frame= df,
-            pvalue_indice= pvalue_indice,
-            gene_indice= gene_indice,
-            logfc_indice= logfc_indice,
-            unmatched_bool = input$unmatched,
-            minlogfc= input$minlogfc,
-            pvallim= input$pvallim,
-            maxlogfc=input$maxlogfc
-          )
-        }
+        GEOreflect_output= GEOreflect_reranking_RNA_seq(
+          the_frame= df,
+          pvalue_indice= pvalue_indice,
+          gene_indice= gene_indice,
+          logfc_indice= logfc_indice,
+          unmatched_bool = input$unmatched,
+          minlogfc= input$minlogfc,
+          pvallim= input$pvallim,
+          maxlogfc=input$maxlogfc
+        )
+        
+        
         if(any(as.numeric(GEOreflect_output$GEOreflect_rank))){
           bool_sum= as.integer(nrow(GEOreflect_output) > 15) +
             as.integer(nrow(GEOreflect_output) > 50) +
@@ -757,6 +585,7 @@ server <- function(input, output, session) {
           }
           
           
+          
           tha_plot= tha_plot +
             geom_abline(intercept = 0, slope = 1, color="red",
                         linetype="dashed", linewidth=1.5) +
@@ -772,15 +601,17 @@ server <- function(input, output, session) {
                    ,width=input$export_size,height= input$export_size,units = "px")
           }
           
+          
+          
+          
           return(ggplotly(tha_plot))
         }else{
           showModal(modalDialog(
             title = "Check that your gene/probe column is correct",
-            paste0("They should be formatted as HNGC symbols e.g. USP7 or probe IDs e.g. 222589_at"),
+            paste0("They should be formatted as HNGC symbols e.g. USP7, ABCA1 and WNT5A"),
             easyClose = TRUE,
             footer = NULL
           ))
-          
           bool_sum= as.integer(nrow(GEOreflect_output) > 15) +
             as.integer(nrow(GEOreflect_output) > 50) +
             as.integer(nrow(GEOreflect_output) > 100) +
@@ -815,29 +646,12 @@ server <- function(input, output, session) {
             " ",
             colnames(GEOreflect_output))
           #export_frame$opacity= 0.01
+
           
-          
-          
-          
-          if(input$extremes){
-            GEOreflect_output$opacity= 0.05
-            GEOreflect_output$opacity[GEOreflect_output$Shift ==
-                                        "↑↑" |
-                                        GEOreflect_output$Shift == "↓↓"]= 1
-            tha_plot= ggplot(GEOreflect_output,
-                             aes(y=`p-value rank`, x=`p-value rank`, label=Gene)) +
-              geom_point(size= 3, 
-                         color= "#008080", 
-                         aes(alpha= opacity)) 
-          }else{
-            tha_plot= ggplot(GEOreflect_output,
-                             aes(y=`p-value rank`, x=`p-value rank`, label=Gene)) +
-              geom_point(size= 3, 
-                         color= "#008080") 
-          }
-          
-          
-          tha_plot= tha_plot +
+        tha_plot= ggplot(GEOreflect_output,
+                         aes(y=`p-value rank`, x=`p-value rank`, label=Gene)) +
+          geom_point(size= 3, 
+                     color= "#008080")  +
             geom_abline(intercept = 0, slope = 1, color="red",
                         linetype="dashed", linewidth=1.5) +
             labs(x="p-value rank",y="GEOreflect rank",title =
@@ -852,13 +666,14 @@ server <- function(input, output, session) {
                    ,width=input$export_size,height= input$export_size,units = "px")
           }
           
+          
+          
+          
           return(ggplotly(tha_plot))
         }
         
-        
-        
-        
-        
+       
+      
       }
       
       
@@ -869,6 +684,6 @@ server <- function(input, output, session) {
       
     })})
   #Ends here   
-}
+  }
 # Create Shiny app ----
 shinyApp(ui, server)

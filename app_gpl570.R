@@ -3,6 +3,8 @@ require(openxlsx)
 require(ggplot2)
 require(DT)
 require(plotly)
+require(limma)
+require(GEOquery)
 #60 MB limit
 options(shiny.maxRequestSize=60*1024^2)
 brandontheme=theme(
@@ -25,25 +27,19 @@ ui <- fluidPage(
                         sidebarPanel(
                           
                           # Input: Select a file ----
-                          fileInput("file1", "Choose a .csv, .tsv or .xlsx DEG list",
-                                    multiple = FALSE,
-                                    accept = c("text/csv",
-                                               "text/comma-separated-values,text/plain",
-                                               ".csv",
-                                               ".xlsx",
-                                               ".txt",
-                                               ".tsv")),
-                          checkboxInput("header", "Header present?",
-                                        value = T),
-                          
+                          selectizeInput(
+                            'GEO_id', 'Select a GEO id', choices = Platform_meta,
+                            multiple = TRUE, options = list(maxItems = 1)
+                          ),
+                        
                           # Horizontal line ----
                           tags$hr(),
-                          selectInput("gene_col", "Gene column- HNGC symbols like USP7",
-                                      NULL),
-                          selectInput("logfc_col", "Log fold column",
-                                      NULL),
-                          selectInput("pval_col", "p-value column",
-                                      NULL),
+                          selectizeInput(
+                            'CTRL_cols', 'Select control columns', choices = NULL,
+                            multiple = TRUE),
+                          selectizeInput(
+                            'treated_cols', 'Select treated columns',
+                            choices = NULL, multiple = TRUE),
                           checkboxInput("unmatched", "Ignore unmatched genes",
                                         value= T),
                           tags$hr(),
@@ -139,127 +135,10 @@ ui <- fluidPage(
 
 
 #server code
-load("percentile_matrix_p_value_RNAseq.RDS")
+#Platform_meta <- GEOquery::getGEO('GPL570')@header[["series_id"]] 
+#otherwise if API changed too much
+Platform_meta= read.csv('Platform_meta.csv')[,1]
 load('percentile_matrix.RDS')
-get_data= function(input){
-  req(input$file1, cancelOutput = T)
-  tryCatch(
-    {
-      #check extension
-      extension= "csv"
-      if(grepl("[.]xlsx$", input$file1$datapath)){
-        extension= "xlsx"
-      }
-      if(grepl("[.]tsv$", input$file1$datapath)){
-        extension= "tsv"
-      }
-      
-      switch(extension,
-             csv={
-               df= read.csv(input$file1$datapath,
-                            header = input$header,
-                            sep = ",")
-             },
-             tsv={
-               df= read.csv(input$file1$datapath,
-                            header = input$header,
-                            sep= "\t")
-             },
-             xlsx={
-               require(openxlsx)
-               df= openxlsx::read.xlsx(input$file1$datapath,sheet = 1,na.strings = T)
-             },
-             {
-               df= read.csv(input$file1$datapath,
-                            header = input$header,
-                            sep = ",")
-             }
-      )
-    },
-    error = function(e) {
-      # return a safeError if a parsing error occurs
-      stop(safeError(e))
-    }
-  )
-  return(df)
-}
-#can't reuse the code...
-get_cols= function(input){
-  req(input$file1, cancelOutput = T)
-  tryCatch(
-    {
-      #check extension
-      extension= "csv"
-      if(grepl("[.]xlsx$", input$file1$datapath)){
-        extension= "xlsx"
-      }
-      if(grepl("[.]tsv$", input$file1$datapath)){
-        extension= "tsv"
-      }
-      
-      switch(extension,
-             csv={
-               df= read.csv(input$file1$datapath,
-                            header = T,
-                            sep = ",")
-             },
-             tsv={
-               df= read.csv(input$file1$datapath,
-                            sep= "\t")
-             },
-             xlsx={
-               require(openxlsx)
-               df= openxlsx::read.xlsx(input$file1$datapath)
-             },
-             {
-               df= read.csv(input$file1$datapath,
-                            header = T,
-                            sep = ",")
-             }
-      )
-    },
-    error = function(e) {
-      # return a safeError if a parsing error occurs
-      stop(safeError(e))
-    }
-  )
-  return(colnames(df))
-  
-}
-
-min_max_normalisation= function(vector=1:10){ #min max normalisation- 1 = highest, 0= lowest
-  (vector-min(vector))/(max(vector)-min(vector))
-}
-geometric_mean= function(values= c(1,2,1)){
-  (prod(values))^(1/length(values))
-}
-get_platform_percentile_RNA_seq= function(gene_and_pvalue){
-  if(as.numeric(gene_and_pvalue[2])== 0 | 
-     !(gene_and_pvalue[1] %in% rownames(percentile_matrix_p_value_RNAseq))){
-    return(1)
-  }else{
-    gene= c(t(gene_and_pvalue[1])) #why does this work no clue but gets the string i need- t is transpose so eh#
-    which.min(as.numeric(percentile_matrix_p_value_RNAseq[rownames(percentile_matrix_p_value_RNAseq) == gene, ]) <
-                as.numeric(gene_and_pvalue[2])) #why do I need to coerce to float- how knows but safer as input can be treated as a string
-  }
-}
-shift_label= function(x= output[1, ], median_shift){
-  label= "-"
-  if(as.logical(as.numeric(x[4]) > as.numeric(x[6]))){
-    label= "↓"
-  }
-  if(as.logical(as.numeric(x[4]) < as.numeric(x[6]))){
-    label= "↑"
-  }
-  if(abs(as.numeric(x[4]) - as.numeric(x[6])) >
-     median_shift){
-    label= paste0(label, label)
-  }
-  
-  
-  return(label)
-}
-
 get_platform_percentile_GPL570= function(probe_and_pvalue= c("222589_at", 4.43E-09)){
   if(as.numeric(probe_and_pvalue[2])== 0 | 
      !(probe_and_pvalue[1] %in% rownames(percentile_matrix))){
@@ -270,102 +149,19 @@ get_platform_percentile_GPL570= function(probe_and_pvalue= c("222589_at", 4.43E-
                 as.numeric(probe_and_pvalue[2])) #why do I need to coerce to float- how knows but safer as input can be treated as a string
   }
 }
-
-GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
-                                       logfc_indice, 
-                                       minlogfc= -1,
-                                       pvallim= 0.05,
-                                       maxlogfc=1,
-                                       unmatched_bool= T){
-  temp= the_frame[, c(gene_indice,
-                      pvalue_indice,
-                      logfc_indice)]
-  
-  colnames(temp)= c("genes", "pvalues", "logfc")
-  if(class(temp$pvalues) != "numeric" |
-     class(temp$logfc) != "numeric" |
-     class(temp$genes) != "character" |
-     sum(is.na(temp$pvalues) == nrow(temp))){
-    return(data.frame(Genes= temp$genes,
-                      logFC= temp$logfc,
-                      'p-values'= temp$pvalues,
-                      pval_rank= rank(temp$pvalues),
-                      GEOreflect_rank= NA,
-                      Rank_change= NA,
-                      Shift= NA,
-                      Platform_relative_rank= NA
-    ))
-  }else{
-    temp= temp[!is.na(temp$logfc) &
-                 !is.na(temp$pvalues), ]
-    temp= temp[temp$logfc < minlogfc | temp$logfc > 
-                 maxlogfc, ]
-    temp= temp[temp$pvalues <= pvallim, ]
-    if(unmatched_bool){
-      temp= temp[temp$genes %in% rownames(percentile_matrix_p_value_RNAseq), ]
-    }
-    
-    if(!any(temp$genes %in% rownames(percentile_matrix_p_value_RNAseq)) |
-       nrow(temp) == 0){
-      if(nrow(temp) == 0){
-        showModal(modalDialog(
-          title = "Filtering step too stringent",
-          paste0("Increase the p-value limit or bounds for upper and lower log fold change"),
-          easyClose = TRUE,
-          footer = NULL
-        ))
-      }
-      
-      
-      return(data.frame(Genes= temp$genes,
-                        logFC= temp$logfc,
-                        'p-values'= temp$pvalues,
-                        pval_rank= rank(temp$pvalues),
-                        GEOreflect_rank= NA,
-                        Rank_change= NA,
-                        Shift= NA,
-                        Platform_relative_rank= NA
-      ))
-    }else{
-      temp$pval_normalised= min_max_normalisation(-temp$pvalues)
-      temp$plat_rank= as.integer(apply(temp, 1,
-                                       get_platform_percentile_RNA_seq))
-      temp$GEOreflect= ((1000 - temp$plat_rank)+1)/ 1000
-      temp$comb_score= apply(temp[,c(4,6)], 1, geometric_mean)
-      output= data.frame(Genes= temp$gene,
-                         logFC= temp$logfc,
-                         'p-values'= temp$pvalues,
-                         pval_rank= rank(temp$pvalues),
-                         Platform_relative_rank= temp$plat_rank,
-                         GEOreflect_rank= rank(-temp$comb_score))
-      
-      
-      
-      median_shift= as.numeric(
-        quantile(abs(output$pval_rank - output$GEOreflect_rank), 
-                 0.75))
-      output= output[order(output$GEOreflect_rank),]
-      output$Rank_change= output$GEOreflect_rank - output$pval_rank
-      
-      output$Shift= apply(output, 1, shift_label, median_shift)
-      return(output)
-    }
-  }
+geometric_mean= function(values= c(1,2,1)){
+  (prod(values))^(1/length(values))
 }
 
-GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
-                                      logfc_indice, probe_indice=1,
+GEOreflect_reranking_GPL570= function(the_frame,
                                       unmatched_bool= T,
                                       minlogfc= -1,
                                       pvallim= 0.05,
                                       maxlogfc=1,
                                       merge_probe_gene= F){
-  temp= the_frame[, c(probe_indice,
-                      pvalue_indice,
-                      logfc_indice,
-                      gene_indice)]
-  
-  colnames(temp)= c("probe", "pvalues", "logfc", "genes")
+  temp= the_frame
+  colnames(temp)= c("probe", "pvalues", "logfc", "genes", 
+                    "average_exprss")
   
   
   if(class(temp$pvalues) != "numeric" |
@@ -415,11 +211,15 @@ GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
                         Platform_relative_rank= NA
       ))
     }else{
-      temp$pval_normalised= min_max_normalisation(rank(temp$pvalues))
+      temp$pval_normalised= rank(-temp$pvalues)/(length(temp$pvalues))
+      temp$aver_exprss_normalised= rank(temp$average_exprss)/(length(temp$average_exprss))
+      
       temp$plat_rank= as.integer(apply(temp, 1,
                                        get_platform_percentile_GPL570))
       temp$GEOreflect= ((1000 - temp$plat_rank)+1)/ 1000
-      temp$comb_score= apply(temp[,c(5,7)], 1, geometric_mean)
+      temp$comb_score= apply(temp[,c("pval_normalised",
+                                     "aver_exprss_normalised",
+                                     "GEOreflect")], 1, geometric_mean)
       
       output= data.frame(Probe= temp$probe,
                          Genes= temp$gene,
@@ -427,6 +227,7 @@ GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
                          'p-values'= temp$pvalues,
                          pval_rank= rank(temp$pvalues),
                          Platform_relative_rank= temp$plat_rank,
+                         Average_expression_rank= temp$average_exprss,
                          GEOreflect_rank= rank(-temp$comb_score))
       
       
@@ -450,134 +251,153 @@ GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
 }
 
 
-
-
+get_DEG_table= function(gset, gsms){
+  #same procedure as GEO2R
+  fvarLabels(gset) <- make.names(fvarLabels(gset))
+  sml <- strsplit(gsms, split="")[[1]]
+  
+  # filter out excluded samples (marked as "X")
+  sel <- which(sml != "X")
+  sml <- sml[sel]
+  gset <- gset[ ,sel]
+  
+  # log2 transformation
+  ex <- exprs(gset)
+  qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+  LogC <- (qx[5] > 100) ||
+    (qx[6]-qx[1] > 50 && qx[2] > 0)
+  if (LogC) { ex[which(ex <= 0)] <- NaN
+  exprs(gset) <- log2(ex) }
+  
+  # assign samples to groups and set up design matrix
+  gs <- factor(sml)
+  groups <- make.names(c("1","2"))
+  levels(gs) <- groups
+  gset$group <- gs
+  design <- model.matrix(~group + 0, gset)
+  colnames(design) <- levels(gs)
+  
+  fit <- lmFit(gset, design)  # fit linear model
+  
+  # set up contrasts of interest and recalculate model coefficients
+  cts <- paste(groups[1], groups[2], sep="-")
+  cont.matrix <- makeContrasts(contrasts=cts, levels=design)
+  fit2 <- contrasts.fit(fit, cont.matrix)
+  
+  # compute statistics and table of top significant genes
+  fit2 <- eBayes(fit2, 0.01)
+  tT <- topTable(fit2, adjust="fdr", sort.by="B", number=5000000)
+  
+  tT <- subset(tT, select=c("ID","adj.P.Val","P.Value","t","B","logFC", "Gene.ID",
+                            "Gene.symbol","Gene.title"))
+  average_exprss= as.data.frame(apply(ex, 1, sum, na.rm= T))
+  average_exprss$ID= rownames(average_exprss)
+  colnames(average_exprss)[1]= "average_exprss"
+  tT= merge(tT, average_exprss)
+  
+  return(tT)
+}
+treated_labels = c("overexp", "express", "transgen", "expos", "tg", "induc",
+                  "stim", "treated", "transfected", "overexpression",
+                  "transformed", "tumor", "tomour", "disease",
+                  "infect", "disorder",
+                  "knock", "null",
+                     "s[hi]rna",
+                     "delet",
+                     "si[a-zA-z]",
+                     "reduc",
+                     "kd",
+                     "\\-\\/",
+                     "\\/\\-",
+                     "\\+\\/", "\\/\\+",
+                     "cre", "flox",
+                     "mut",
+                     "defici",
+                     "[_| ]ko[_| ]|[_| ]ko$")
+control_labels <- c("untreat", "_ns_",
+                    "normal",
+                    "^wt$|^wt[_| ]|[_| ]wt[_| ]|[_| ]wt$",
+                    "gfp",
+                    "non[-|.|_| ]smoker",
+                    "vehicle",
+                    "sensitive",
+                    "stable",
+                    "ctrl",
+                    "non.sense",
+                    "nonsense",
+                    "baseline",
+                    "mock",
+                    "_luc_|_luc",
+                    "siluc",
+                    "wildtype|wild.type",
+                    "nontreat",
+                    "non.treated",
+                    "control",
+                    "[ |_]con[ |_]|^con$|^con[_| ]|[_| ]con$", #con sometimes stand in for control- needs to be specific- no futher words before or after
+                    "untreated",
+                    "no.treat",
+                    "undosed",
+                    "reference",
+                    "standard",
+                    "untransfected",
+                    "mir.nc",
+                    "minc",
+                    "_non_|^non_",
+                    "scramble",
+                    "lucif",
+                    "parent",
+                    "free.medi",
+                    "untransfected",
+                    "ntc",
+                    "mirNC")
 
 server <- function(input, output, session) {
   
   output$contents <- DT::renderDataTable({
+    req(input$GEO_id)
+    gset <- getGEO(input$GEO_id, GSEMatrix =T, AnnotGPL=T)
+    if(length(gset) > 1 & any(grepl("GPL570", attr(gset, "names")))){
+      idx= grep('GPL570', attr(gset, "names")) #bit of a bodge but assumes platform specified is enough to distinguish similar ones
+    }else{
+      idx= 1}
+    gset <- gset[[idx]]
+    # make proper column names to match toptable
+    fvarLabels(gset) <- make.names(fvarLabels(gset))
+    df= data.frame(GEO_id= as.character(gset@phenoData@data$geo_accession),
+      Title= as.character(gset@phenoData@data$title),
+                   Source= as.character(gset@phenoData@data$source_name_ch1),
+                   Characteristics= as.character(
+                     gset@phenoData@data$characteristics_ch1))
+    default_CTRL= NULL
+    if(any(grepl(paste0(control_labels, collapse = "|"), the_samples))){
+      default_CTRL= 
+        df$GEO_id[grep(paste0(control_labels, collapse = "|"), the_samples)]
+      
+    }
+    default_treated= NULL
+    if(any(grepl(paste0(treated_labels, collapse = "|"), the_samples))){
+      default_treated= 
+        df$GEO_id[grep(paste0(treated_labels, collapse = "|"), the_samples)]
+      
+    }
     
-    # input$file1 will be NULL initially. After the user selects
-    # and uploads a file, head of that data file by default,
-    # or all rows if selected, will be shown.
-    
-    req(input$file1)
-    df= get_data(input)
-    
+    updateSelectizeInput(session,
+                         "CTRL_cols", 'Select control samples',
+                         choices= df$GEO_id,
+                         selected= default_CTRL)
+    updateSelectizeInput(session,
+                         "treated_cols", 'Select treated samples',
+                         choices= df$GEO_id,
+                         selected= default_treated)
+
     return(df)
     
   })
-  observe({
-    colspresent= input$file1
-    if (is.null(colspresent))
-      colspresent <- ""
-    colnames_string <- reactive(get_cols(input))
-    colspresent= as.character(colnames_string())
-    
-    #Symbol defaults
-    if(any(grepl("gene|hgnc|symbol|ident", as.character(colspresent)),
-           ignore.case = T)
-    ){
-      defualt_gene_indice=
-        grep("gene|hgnc|symbol|ident", as.character(colspresent),
-             ignore.case = T)[1]
-      #if it actually has the hngc symbols
-      if(any(grepl("hgnc|symbol", as.character(colspresent)),
-             ignore.case = T)){
-        defualt_gene_indice=
-          grep("hgnc|symbol", as.character(colspresent), ignore.case = T)[1]
-      }
-      
-    }else{
-      defualt_gene_indice= 1
-    }
-    #logFC defualts
-    if(any(grepl("expr|logfc|fc|fold|log_", as.character(colspresent),
-                 ignore.case = T))){
-      defualt_logfc= grep("expr|logfc|fc|fold|log_", as.character(colspresent),
-                          ignore.case = T)[1]
-      
-      #if it has multiple fcs
-      if(any(grepl("log", as.character(colspresent), ignore.case = T)
-             &
-             grepl("fold", as.character(colspresent), ignore.case = T)
-      )
-      ){
-        bool= grepl("log", as.character(colspresent), ignore.case = T) &
-          grepl("fold", as.character(colspresent), ignore.case = T)
-        
-        defualt_logfc= which(bool)[1]
-      }
-    }else{
-      defualt_logfc= 2
-    }
-    
-    
-    if(any(grepl("p-val|pval|p[.]val", as.character(colspresent), 
-                 ignore.case = T))){
-      
-      defualt_pval=
-        which(grepl("p-val|pval|p[.]val", as.character(colspresent), 
-                    ignore.case = T))
-      defualt_pval= defualt_pval[1]
-      
-    }
-    #better if using non adjusted p-values- this switches to it if 
-    #both p-values and adjusted p-values
-    if(any(grepl("p-val|pval|p[.]val", as.character(colspresent), 
-                 ignore.case = T) & 
-           !grepl("adj", as.character(colspresent), 
-                  ignore.case = T))){
-      
-      defualt_pval=
-        which(grepl("p-val|pval|p[.]val", as.character(colspresent), 
-                    ignore.case = T) & 
-                !grepl("adj", as.character(colspresent), 
-                       ignore.case = T))
-      defualt_pval= defualt_pval[1]
-      
-    }
-    
-    defualt_probe= 1
-    if(any(grepl("ID|_at|probe|affy|hg_u133", as.character(colspresent),
-                 ignore.case = T))){
-      grep("p-val|adj[_|-]p|pval", as.character(colspresent), ignore.case = T)[1]
-    }else{
-      defualt_probe= 1
-    }
-    
-    
-    
-    
-    updateSelectInput(session,
-                      "pval_col", "p-value column",
-                      choices= colspresent,
-                      selected = as.character(colspresent)[defualt_pval])
-    updateSelectInput(session,
-                      "logfc_col", "Log fold column",
-                      choices= colspresent,
-                      selected = as.character(colspresent)[defualt_logfc])
-    updateSelectInput(session,
-                      "gene_col", "Gene column- HNGC symbols like USP7",
-                      choices= colspresent,
-                      selected = as.character(colspresent)[defualt_gene_indice])
-    if(input$GPL570){
-      updateSelectInput(session,
-                        "probe_col", "Column with probe IDs e.g. 222589_at",
-                        choices= colspresent,
-                        selected = as.character(colspresent)[defualt_probe])
-    }
-    
-    
-  })
-  output$pval_selected <- renderText({
-    paste0(input$pval_col)
-  })
+
   observeEvent(input$georeflect, {
-    req(input$file1, cancelOutput = T)
-    req(input$gene_col, cancelOutput = T)
-    req(input$logfc_col, cancelOutput = T)
-    req(input$pval_col, cancelOutput = T)
+    req(input$GEO_id, cancelOutput = T)
+    req(input$treated_cols, cancelOutput = T)
+    req(input$CTRL_cols, cancelOutput = T)
     showModal(modalDialog(
       title = "GEOreflect is running. This may take some time",
       paste0("Can take around 3 minutes- needs around 3 GB RAM free."),
@@ -585,62 +405,34 @@ server <- function(input, output, session) {
       footer = NULL
     ))
     output$georeflect_frame= DT::renderDataTable({
-      
-      df= get_data(input)
-      pvalue_indice= which(colnames(df) == input$pval_col)
-      gene_indice= which(colnames(df) == input$gene_col)
-      logfc_indice= which(colnames(df) == input$logfc_col)
-      probe_indice= which(colnames(df) == input$probe_col)
-      df= df[df[, logfc_indice] < input$minlogfc | df[, 2] > 
-               input$maxlogfc, ]
-      df= df[df[, pvalue_indice] <= input$pvallim, ]
-      
-      
-      if(input$GPL570){
-
-        GEOreflect_output= GEOreflect_reranking_GPL570(
-          the_frame= df,
-          pvalue_indice= pvalue_indice,
-          gene_indice= gene_indice,
-          logfc_indice= logfc_indice,
-          unmatched_bool = input$unmatched,
-          probe_indice = probe_indice,
-          minlogfc= input$minlogfc,
-          pvallim= input$pvallim,
-          maxlogfc=input$maxlogfc
-        )
+      gset <- getGEO(input$GEO_id, GSEMatrix =T, AnnotGPL=T)
+      if(length(gset) > 1 & any(grepl("GPL570", attr(gset, "names")))){
+        idx= grep('GPL570', attr(gset, "names")) #bit of a bodge but assumes platform specified is enough to distinguish similar ones
       }else{
-        df= df[df[, logfc_indice] < input$minlogfc | df[, 2] > 
-                 input$maxlogfc, ]
-        df= df[df[, pvalue_indice] <= input$pvallim, ]
-        GEOreflect_output= GEOreflect_reranking_RNA_seq(
-          the_frame= df,
-          pvalue_indice= pvalue_indice,
-          gene_indice= gene_indice,
-          logfc_indice= logfc_indice,
-          unmatched_bool = input$unmatched,
-          minlogfc= input$minlogfc,
-          pvallim= input$pvallim,
-          maxlogfc=input$maxlogfc
-        )
-      }
+        idx= 1}
+      gset <- gset[[idx]]
+      # make proper column names to match toptable
       
       
+      fvarLabels(gset) <- make.names(fvarLabels(gset))
+      GEO_ids= as.character(gset@phenoData@data$geo_accession)
+      gsms= rep("X", length(the_samples))
+      gsms[which(GEO_ids %in% input$CTRL_cols)]= 0
+      gsms[which(GEO_ids %in% input$treated_cols)]= 1
+      gsms= paste0(gsms, collapse= "")
+      the_frame= get_DEG_table(gset = gset,
+                    gsms= gsms)
+      the_frame= the_frame[c("ID", "P.Value",
+                             "logFC", "Gene.symbol",
+                             "average_exprss")]
+      output= GEOreflect_reranking_GPL570(the_frame= the_frame,
+                                  unmatched_bool= input$unmatched,
+                                  minlogfc= input$minlogfc,
+                                  pvallim= input$pvallim,
+                                  maxlogfc= input$maxlogfc,
+                                  merge_probe_gene= F)
       
-      if (input$download) {
-        write.csv(GEOreflect_output,
-                  paste0("~/", input$export_name, "_GEOreflect_ranking.csv"),
-                  sep="")
-      }
-      colnames(GEOreflect_output)= gsub(
-        "_",
-        " ",
-        colnames(GEOreflect_output))
-      
-      
-      
-      
-      return(GEOreflect_output)
+      return(output)
       
     })
   })
@@ -653,10 +445,9 @@ server <- function(input, output, session) {
   observeEvent(input$tha_plot_button, {
     output$georeflect_plot= renderPlotly({
       if (input$tha_plot_button) {
-        req(input$file1, cancelOutput = T)
-        req(input$gene_col, cancelOutput = T)
-        req(input$logfc_col, cancelOutput = T)
-        req(input$pval_col, cancelOutput = T)
+        req(input$GEO_id, cancelOutput = T)
+        req(input$treated_cols, cancelOutput = T)
+        req(input$CTRL_cols, cancelOutput = T)
         
         
         showModal(modalDialog(
@@ -665,41 +456,41 @@ server <- function(input, output, session) {
           easyClose = TRUE,
           footer = NULL
         ))
-        
-        
-        df= get_data(input)
-        pvalue_indice= which(colnames(df) == input$pval_col)
-        gene_indice= which(colnames(df) == input$gene_col)
-        logfc_indice= which(colnames(df) == input$logfc_col)
-        probe_indice= which(colnames(df) == input$probe_col)
-        #df= df[df[,2] < input$minlogfc | df[, 2] > 
-        #         input$maxlogfc, ]
-        #df= df[df[, 3] <= input$pvallim, ]
-        if(input$GPL570){
-          GEOreflect_output= GEOreflect_reranking_GPL570(
-            the_frame= df,
-            pvalue_indice= pvalue_indice,
-            gene_indice= gene_indice,
-            logfc_indice= logfc_indice,
-            unmatched_bool = input$unmatched,
-            probe_indice = probe_indice,
-            merge_probe_gene= T,
-            minlogfc= input$minlogfc,
-            pvallim= input$pvallim,
-            maxlogfc=input$maxlogfc
-          )
+        gset <- getGEO(input$GEO_id, GSEMatrix =T, AnnotGPL=T)
+        if(length(gset) > 1 & any(grepl("GPL570", attr(gset, "names")))){
+          idx= grep('GPL570', attr(gset, "names")) #bit of a bodge but assumes platform specified is enough to distinguish similar ones
         }else{
-          GEOreflect_output= GEOreflect_reranking_RNA_seq(
-            the_frame= df,
-            pvalue_indice= pvalue_indice,
-            gene_indice= gene_indice,
-            logfc_indice= logfc_indice,
-            unmatched_bool = input$unmatched,
-            minlogfc= input$minlogfc,
-            pvallim= input$pvallim,
-            maxlogfc=input$maxlogfc
-          )
-        }
+          idx= 1}
+        gset <- gset[[idx]]
+        # make proper column names to match toptable
+        
+        
+        fvarLabels(gset) <- make.names(fvarLabels(gset))
+        GEO_ids= as.character(gset@phenoData@data$geo_accession)
+        gsms= rep("X", length(the_samples))
+        gsms[which(GEO_ids %in% input$CTRL_cols)]= 0
+        gsms[which(GEO_ids %in% input$treated_cols)]= 1
+        gsms= paste0(gsms, collapse= "")
+        the_frame= get_DEG_table(gset = gset,
+                                 gsms= gsms)
+        the_frame= the_frame[c("ID", "P.Value",
+                               "logFC", "Gene.symbol",
+                               "average_exprss")]
+        GEOreflect_output= GEOreflect_reranking_GPL570(the_frame= the_frame,
+                                            unmatched_bool= input$unmatched,
+                                            minlogfc= input$minlogfc,
+                                            pvallim= input$pvallim,
+                                            maxlogfc= input$maxlogfc,
+                                            merge_probe_gene= T)
+        
+        
+        
+        
+        
+        
+        
+        
+        
         if(any(as.numeric(GEOreflect_output$GEOreflect_rank))){
           bool_sum= as.integer(nrow(GEOreflect_output) > 15) +
             as.integer(nrow(GEOreflect_output) > 50) +

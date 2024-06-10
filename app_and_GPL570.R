@@ -44,6 +44,8 @@ ui <- fluidPage(
                                       NULL),
                           selectInput("pval_col", "p-value column",
                                       NULL),
+                          selectInput("average_exprss_col", "Average expression column",
+                                      NULL),
                           checkboxInput("unmatched", "Ignore unmatched genes",
                                         value= T),
                           tags$hr(),
@@ -271,25 +273,32 @@ get_platform_percentile_GPL570= function(probe_and_pvalue= c("222589_at", 4.43E-
   }
 }
 
-GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
+GEOreflect_reranking_RNA_seq= function(the_frame,
+                                       pvalue_indice,
+                                       gene_indice,
                                        logfc_indice, 
+                                       average_exprss_indice,
                                        minlogfc= -1,
                                        pvallim= 0.05,
                                        maxlogfc=1,
                                        unmatched_bool= T){
   temp= the_frame[, c(gene_indice,
                       pvalue_indice,
-                      logfc_indice)]
+                      logfc_indice,
+                      average_exprss_indice)]
   
-  colnames(temp)= c("genes", "pvalues", "logfc")
+  colnames(temp)= c("genes", "pvalues", "logfc", "average_expression")
+  temp= temp[temp$genes != "", ]
   if(class(temp$pvalues) != "numeric" |
      class(temp$logfc) != "numeric" |
      class(temp$genes) != "character" |
-     sum(is.na(temp$pvalues) == nrow(temp))){
+     sum(is.na(temp$pvalues) == nrow(temp))|
+     nrow(temp) == 0){
     return(data.frame(Genes= temp$genes,
                       logFC= temp$logfc,
                       'p-values'= temp$pvalues,
                       pval_rank= rank(temp$pvalues),
+                      average_expression_rank= rank(-temp$average_expression),
                       GEOreflect_rank= NA,
                       Rank_change= NA,
                       Shift= NA,
@@ -321,21 +330,26 @@ GEOreflect_reranking_RNA_seq= function(the_frame, pvalue_indice, gene_indice,
                         logFC= temp$logfc,
                         'p-values'= temp$pvalues,
                         pval_rank= rank(temp$pvalues),
+                        average_expression_rank= rank(-temp$average_expression),
                         GEOreflect_rank= NA,
                         Rank_change= NA,
                         Shift= NA,
                         Platform_relative_rank= NA
       ))
     }else{
-      temp$pval_normalised= min_max_normalisation(-temp$pvalues)
+      temp$pval_normalised= rank(-temp$pvalues)/(length(temp$pvalues))
+      temp$express_norm= rank(temp$average_expression)/(length(temp$average_expression))
+      
       temp$plat_rank= as.integer(apply(temp, 1,
                                        get_platform_percentile_RNA_seq))
       temp$GEOreflect= ((1000 - temp$plat_rank)+1)/ 1000
-      temp$comb_score= apply(temp[,c(4,6)], 1, geometric_mean)
+      temp$comb_score= apply(temp[,c("GEOreflect", "pval_normalised", 
+                                     "express_norm")], 1, geometric_mean)
       output= data.frame(Genes= temp$gene,
                          logFC= temp$logfc,
                          'p-values'= temp$pvalues,
                          pval_rank= rank(temp$pvalues),
+                         average_expression_rank= rank(-temp$average_expression),
                          Platform_relative_rank= temp$plat_rank,
                          GEOreflect_rank= rank(-temp$comb_score))
       
@@ -358,6 +372,7 @@ GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
                                       unmatched_bool= T,
                                       minlogfc= -1,
                                       pvallim= 0.05,
+                                      average_exprss_indice,
                                       maxlogfc=1,
                                       merge_probe_gene= F){
   temp= the_frame[, c(probe_indice,
@@ -366,16 +381,18 @@ GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
                       gene_indice)]
   
   colnames(temp)= c("probe", "pvalues", "logfc", "genes")
-  
+  temp= temp[temp$genes != "", ]
   
   if(class(temp$pvalues) != "numeric" |
      class(temp$logfc) != "numeric" |
      class(temp$probe) != "character" |
-     sum(is.na(temp$pvalues) == nrow(temp))){
+     sum(is.na(temp$pvalues) == nrow(temp)) |
+     nrow(temp) == 0){
     return(data.frame(Genes= temp$genes,
                       logFC= temp$logfc,
                       'p-values'= temp$pvalues,
                       pval_rank= rank(temp$pvalues),
+                      average_expression_rank= rank(-temp$average_expression),
                       GEOreflect_rank= NA,
                       Rank_change= NA,
                       Shift= NA,
@@ -409,22 +426,26 @@ GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
                         logFC= temp$logfc,
                         'p-values'= temp$pvalues,
                         pval_rank= rank(temp$pvalues),
+                        average_expression_rank= rank(-temp$average_expression),
                         GEOreflect_rank= NA,
                         Rank_change= NA,
                         Shift= NA,
                         Platform_relative_rank= NA
       ))
     }else{
-      temp$pval_normalised= min_max_normalisation(rank(temp$pvalues))
+      temp$pval_normalised= rank(-temp$pvalues)/(length(temp$pvalues))
+      temp$express_norm= rank(temp$average_expression)/(length(temp$average_expression))
+      
       temp$plat_rank= as.integer(apply(temp, 1,
-                                       get_platform_percentile_GPL570))
-      temp$GEOreflect= ((1000 - temp$plat_rank)+1)/ 1000
-      temp$comb_score= apply(temp[,c(5,7)], 1, geometric_mean)
+                                       get_platform_percentile_RNA_seq))
+      temp$comb_score= apply(temp[,c("GEOreflect", "pval_normalised", 
+                                     "express_norm")], 1, geometric_mean)
       
       output= data.frame(Probe= temp$probe,
                          Genes= temp$gene,
                          logFC= temp$logfc,
                          'p-values'= temp$pvalues,
+                         average_expression_rank= rank(-temp$average_expression),
                          pval_rank= rank(temp$pvalues),
                          Platform_relative_rank= temp$plat_rank,
                          GEOreflect_rank= rank(-temp$comb_score))
@@ -546,7 +567,16 @@ server <- function(input, output, session) {
       defualt_probe= 1
     }
     
-    
+    default_expression=2
+    if(any(grepl("avg_expression|expression", as.character(colspresent), 
+                 ignore.case = T))){
+      
+      default_expression=
+        which(grepl("avg[_|.| ]expr|expression|AveExpr|avex", as.character(colspresent), 
+                    ignore.case = T))
+      default_expression= default_expression[1]
+      
+    }
     
     
     updateSelectInput(session,
@@ -561,6 +591,10 @@ server <- function(input, output, session) {
                       "gene_col", "Gene column- HNGC symbols like USP7",
                       choices= colspresent,
                       selected = as.character(colspresent)[defualt_gene_indice])
+    updateSelectInput(session,
+                      "average_exprss_col", "Average expression column",
+                      choices= colspresent,
+                      selected = as.character(colspresent)[default_expression])
     if(input$GPL570){
       updateSelectInput(session,
                         "probe_col", "Column with probe IDs e.g. 222589_at",
@@ -578,6 +612,12 @@ server <- function(input, output, session) {
     req(input$gene_col, cancelOutput = T)
     req(input$logfc_col, cancelOutput = T)
     req(input$pval_col, cancelOutput = T)
+    req(input$average_exprss_col, cancelOutput = T)
+    if(input$GPL570){
+      req(input$probe_col, cancelOutput = T)
+    }
+    
+    
     showModal(modalDialog(
       title = "GEOreflect is running. This may take some time",
       paste0("Can take around 3 minutes- needs around 3 GB RAM free."),
@@ -591,10 +631,7 @@ server <- function(input, output, session) {
       gene_indice= which(colnames(df) == input$gene_col)
       logfc_indice= which(colnames(df) == input$logfc_col)
       probe_indice= which(colnames(df) == input$probe_col)
-      df= df[df[, logfc_indice] < input$minlogfc | df[, 2] > 
-               input$maxlogfc, ]
-      df= df[df[, pvalue_indice] <= input$pvallim, ]
-      
+      average_exprss_indice= which(colnames(df) == input$average_exprss_col)
       
       if(input$GPL570){
 
@@ -604,6 +641,7 @@ server <- function(input, output, session) {
           gene_indice= gene_indice,
           logfc_indice= logfc_indice,
           unmatched_bool = input$unmatched,
+          average_exprss_indice= average_exprss_indice,
           probe_indice = probe_indice,
           minlogfc= input$minlogfc,
           pvallim= input$pvallim,
@@ -619,6 +657,8 @@ server <- function(input, output, session) {
           gene_indice= gene_indice,
           logfc_indice= logfc_indice,
           unmatched_bool = input$unmatched,
+          
+          average_exprss_indice= average_exprss_indice,
           minlogfc= input$minlogfc,
           pvallim= input$pvallim,
           maxlogfc=input$maxlogfc
@@ -672,34 +712,44 @@ server <- function(input, output, session) {
         gene_indice= which(colnames(df) == input$gene_col)
         logfc_indice= which(colnames(df) == input$logfc_col)
         probe_indice= which(colnames(df) == input$probe_col)
-        #df= df[df[,2] < input$minlogfc | df[, 2] > 
-        #         input$maxlogfc, ]
-        #df= df[df[, 3] <= input$pvallim, ]
+        average_exprss_indice= which(colnames(df) == input$average_exprss_col)
+        
         if(input$GPL570){
+          
           GEOreflect_output= GEOreflect_reranking_GPL570(
             the_frame= df,
             pvalue_indice= pvalue_indice,
             gene_indice= gene_indice,
             logfc_indice= logfc_indice,
             unmatched_bool = input$unmatched,
+            average_exprss_indice= average_exprss_indice,
             probe_indice = probe_indice,
-            merge_probe_gene= T,
             minlogfc= input$minlogfc,
             pvallim= input$pvallim,
-            maxlogfc=input$maxlogfc
+            maxlogfc=input$maxlogfc,
+            merge_probe_gene = T
           )
         }else{
+          df= df[df[, logfc_indice] < input$minlogfc | df[, 2] > 
+                   input$maxlogfc, ]
+          df= df[df[, pvalue_indice] <= input$pvallim, ]
           GEOreflect_output= GEOreflect_reranking_RNA_seq(
             the_frame= df,
             pvalue_indice= pvalue_indice,
             gene_indice= gene_indice,
             logfc_indice= logfc_indice,
             unmatched_bool = input$unmatched,
+            
+            average_exprss_indice= average_exprss_indice,
             minlogfc= input$minlogfc,
             pvallim= input$pvallim,
             maxlogfc=input$maxlogfc
           )
         }
+        
+        
+        
+        
         if(any(as.numeric(GEOreflect_output$GEOreflect_rank))){
           bool_sum= as.integer(nrow(GEOreflect_output) > 15) +
             as.integer(nrow(GEOreflect_output) > 50) +

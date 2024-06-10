@@ -231,6 +231,8 @@ GEOreflect_reranking_RNA_seq= function(the_frame,
                                        unmatched_bool= T){
   temp= the_frame
   colnames(temp)= c("genes", "pvalues", "logfc", "average_expression")
+  temp= temp[temp$genes != "", ]
+  
   if(class(temp$pvalues) != "numeric" |
      class(temp$logfc) != "numeric" |
      class(temp$genes) != "character" |
@@ -290,8 +292,6 @@ GEOreflect_reranking_RNA_seq= function(the_frame,
                          pval_rank= rank(temp$pvalues),
                          Platform_relative_rank= temp$plat_rank,
                          GEOreflect_rank= rank(-temp$comb_score))
-      
-      
       
       median_shift= as.numeric(
         quantile(abs(output$pval_rank - output$GEOreflect_rank), 

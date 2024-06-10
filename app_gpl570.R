@@ -16,6 +16,7 @@ brandontheme=theme(
                            face="plain",hjust = 0.5),
   axis.title = element_text(color="black", size=12, face="plain",
                             hjust = 0.5))
+
 # Define UI for data upload app ----
 ui <- fluidPage(
   tags$head(tags$script(src = "message-handler.js")),
@@ -28,7 +29,7 @@ ui <- fluidPage(
                           
                           # Input: Select a file ----
                           selectizeInput(
-                            'GEO_id', 'Select a GEO id', choices = Platform_meta,
+                            'GEO_id', 'Select a GEO id', choices = NULL,
                             multiple = TRUE, options = list(maxItems = 1)
                           ),
                         
@@ -41,14 +42,7 @@ ui <- fluidPage(
                             'treated_cols', 'Select treated columns',
                             choices = NULL, multiple = TRUE),
                           checkboxInput("unmatched", "Ignore unmatched genes",
-                                        value= T),
-                          tags$hr(),
-                          checkboxInput("GPL570", "Using GPL570 platform IDs?"),
-                          selectInput("probe_col", "Column with probe IDs e.g. 222589_at",
-                                      NULL)
-                          
-                          
-                          
+                                        value= T)
                         ),
                         
                         # Main panel for displaying outputs ----
@@ -135,9 +129,7 @@ ui <- fluidPage(
 
 
 #server code
-#Platform_meta <- GEOquery::getGEO('GPL570')@header[["series_id"]] 
-#otherwise if API changed too much
-Platform_meta= read.csv('Platform_meta.csv')[,1]
+
 load('percentile_matrix.RDS')
 get_platform_percentile_GPL570= function(probe_and_pvalue= c("222589_at", 4.43E-09)){
   if(as.numeric(probe_and_pvalue[2])== 0 | 
@@ -153,6 +145,22 @@ geometric_mean= function(values= c(1,2,1)){
   (prod(values))^(1/length(values))
 }
 
+shift_label= function(x= output[1, ], median_shift){
+  label= "-"
+  if(as.logical(as.numeric(x[4]) > as.numeric(x[6]))){
+    label= "↓"
+  }
+  if(as.logical(as.numeric(x[4]) < as.numeric(x[6]))){
+    label= "↑"
+  }
+  if(abs(as.numeric(x[4]) - as.numeric(x[6])) >
+     median_shift){
+    label= paste0(label, label)
+  }
+  
+  
+  return(label)
+}
 GEOreflect_reranking_GPL570= function(the_frame,
                                       unmatched_bool= T,
                                       minlogfc= -1,
@@ -162,6 +170,7 @@ GEOreflect_reranking_GPL570= function(the_frame,
   temp= the_frame
   colnames(temp)= c("probe", "pvalues", "logfc", "genes", 
                     "average_exprss")
+  temp= temp[temp$genes != "", ]
   
   
   if(class(temp$pvalues) != "numeric" |
@@ -185,10 +194,10 @@ GEOreflect_reranking_GPL570= function(the_frame,
     temp= temp[temp$pvalues <= pvallim, ]
     
     if(unmatched_bool){
-      temp= temp[temp$genes %in% rownames(percentile_matrix_p_value_RNAseq), ]
+      temp= temp[temp$probe %in% rownames(percentile_matrix), ]
     }
     
-    if(!any(temp$genes %in% rownames(percentile_matrix_p_value_RNAseq))
+    if(!any(temp$probe %in% rownames(percentile_matrix))
        | nrow(temp) == 0){
       
       if(nrow(temp) == 0){
@@ -229,7 +238,7 @@ GEOreflect_reranking_GPL570= function(the_frame,
                          Platform_relative_rank= temp$plat_rank,
                          Average_expression_rank= temp$average_exprss,
                          GEOreflect_rank= rank(-temp$comb_score))
-      
+
       
       
       median_shift= as.numeric(
@@ -350,9 +359,14 @@ control_labels <- c("untreat", "_ns_",
                     "untransfected",
                     "ntc",
                     "mirNC")
+#Platform_meta <- GEOquery::getGEO('GPL570')@header[["series_id"]] 
+#otherwise if API changed too much
+Platform_meta= read.csv('Platform_meta.csv')[,1]
 
 server <- function(input, output, session) {
-  
+  updateSelectizeInput(session, 'GEO_id', 'Select a GEO id',
+                       choices = Platform_meta,
+                       server = TRUE)
   output$contents <- DT::renderDataTable({
     req(input$GEO_id)
     gset <- getGEO(input$GEO_id, GSEMatrix =T, AnnotGPL=T)
@@ -368,6 +382,8 @@ server <- function(input, output, session) {
                    Source= as.character(gset@phenoData@data$source_name_ch1),
                    Characteristics= as.character(
                      gset@phenoData@data$characteristics_ch1))
+    the_samples= as.character(apply(df, 1, paste0, collapse= ""))
+    
     default_CTRL= NULL
     if(any(grepl(paste0(control_labels, collapse = "|"), the_samples))){
       default_CTRL= 
@@ -416,7 +432,7 @@ server <- function(input, output, session) {
       
       fvarLabels(gset) <- make.names(fvarLabels(gset))
       GEO_ids= as.character(gset@phenoData@data$geo_accession)
-      gsms= rep("X", length(the_samples))
+      gsms= rep("X", length(GEO_ids))
       gsms[which(GEO_ids %in% input$CTRL_cols)]= 0
       gsms[which(GEO_ids %in% input$treated_cols)]= 1
       gsms= paste0(gsms, collapse= "")
@@ -565,12 +581,7 @@ server <- function(input, output, session) {
           
           return(ggplotly(tha_plot))
         }else{
-          showModal(modalDialog(
-            title = "Check that your gene/probe column is correct",
-            paste0("They should be formatted as HNGC symbols e.g. USP7 or probe IDs e.g. 222589_at"),
-            easyClose = TRUE,
-            footer = NULL
-          ))
+          
           
           bool_sum= as.integer(nrow(GEOreflect_output) > 15) +
             as.integer(nrow(GEOreflect_output) > 50) +

@@ -245,13 +245,13 @@ get_platform_percentile_RNA_seq= function(gene_and_pvalue){
 }
 shift_label= function(x= output[1, ], median_shift){
   label= "-"
-  if(as.logical(as.numeric(x[4]) > as.numeric(x[6]))){
+  if(as.logical(as.numeric(x[1]) > as.numeric(x[2]))){
     label= "↓"
   }
-  if(as.logical(as.numeric(x[4]) < as.numeric(x[6]))){
+  if(as.logical(as.numeric(x[1]) < as.numeric(x[2]))){
     label= "↑"
   }
-  if(abs(as.numeric(x[4]) - as.numeric(x[6])) >
+  if(abs(as.numeric(x[1]) - as.numeric(x[2])) >
      median_shift){
     label= paste0(label, label)
   }
@@ -348,7 +348,7 @@ GEOreflect_reranking_RNA_seq= function(the_frame,
       output= output[order(output$GEOreflect_rank),]
       output$Rank_change= output$GEOreflect_rank - output$pval_rank
       
-      output$Shift= apply(output, 1, shift_label, median_shift)
+      output$Shift= apply(output[,c('pval_rank', 'GEOreflect_rank')], 1, shift_label, median_shift)
       return(output)
     }
   }
@@ -401,19 +401,20 @@ server <- function(input, output, session) {
       #if it has multiple fcs
       if(any(grepl("log", as.character(colspresent), ignore.case = T)
              &
-             grepl("fold", as.character(colspresent), ignore.case = T)
+             grepl("fold|fc", as.character(colspresent), ignore.case = T)
       )
       ){
         bool= grepl("log", as.character(colspresent), ignore.case = T) &
-          grepl("fold", as.character(colspresent), ignore.case = T)
+          grepl("fold|fc", as.character(colspresent), ignore.case = T)
         
         defualt_logfc= which(bool)[1]
       }
     }else{
       defualt_logfc= 2
     }
-    defualt_pval= 3
     
+    
+    defualt_pval= 3
     if(any(grepl("p-val|pval|p[.]val", as.character(colspresent), 
                  ignore.case = T))){
       
@@ -687,8 +688,9 @@ server <- function(input, output, session) {
                        color= "#008080")  +
             geom_abline(intercept = 0, slope = 1, color="red",
                         linetype="dashed", linewidth=1.5) +
-            labs(x="p-value rank",y="GEOreflect rank",title =
-                   "p-value vs GEOreflect rank") +
+            labs(x="p-value rank",y="GEOreflect rank",title = 
+                   "<a href = 'https://www.nytimes.com/'>The NY TIMES</a>") +
+                   #"p-value vs GEOreflect rank") +
             scale_y_continuous(expand = c(0, 0), breaks =  axes_scale) +
             scale_x_continuous(expand = c(0, 0), breaks =  axes_scale) +
             brandontheme +

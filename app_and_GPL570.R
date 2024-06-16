@@ -247,13 +247,13 @@ get_platform_percentile_RNA_seq= function(gene_and_pvalue){
 }
 shift_label= function(x= output[1, ], median_shift){
   label= "-"
-  if(as.logical(as.numeric(x[4]) > as.numeric(x[6]))){
+  if(as.logical(as.numeric(x[1]) > as.numeric(x[2]))){
     label= "↓"
   }
-  if(as.logical(as.numeric(x[4]) < as.numeric(x[6]))){
+  if(as.logical(as.numeric(x[1]) < as.numeric(x[2]))){
     label= "↑"
   }
-  if(abs(as.numeric(x[4]) - as.numeric(x[6])) >
+  if(abs(as.numeric(x[1]) - as.numeric(x[2])) >
      median_shift){
     label= paste0(label, label)
   }
@@ -361,7 +361,8 @@ GEOreflect_reranking_RNA_seq= function(the_frame,
       output= output[order(output$GEOreflect_rank),]
       output$Rank_change= output$GEOreflect_rank - output$pval_rank
       
-      output$Shift= apply(output, 1, shift_label, median_shift)
+      output$Shift= apply(output[,c('pval_rank',
+                                    'GEOreflect_rank')], 1, shift_label, median_shift)
       return(output)
     }
   }
@@ -458,7 +459,8 @@ GEOreflect_reranking_GPL570= function(the_frame, pvalue_indice, gene_indice,
       output= output[order(output$GEOreflect_rank),]
       output$Rank_change= output$GEOreflect_rank - output$pval_rank
       
-      output$Shift= apply(output, 1, shift_label, median_shift)
+      output$Shift= apply(output[,c('pval_rank',
+                                    'GEOreflect_rank')], 1, shift_label, median_shift)
       if(merge_probe_gene){
         output$Genes= paste0(output$Genes, ": ", output$Probe)
       }
@@ -521,16 +523,16 @@ server <- function(input, output, session) {
       #if it has multiple fcs
       if(any(grepl("log", as.character(colspresent), ignore.case = T)
              &
-             grepl("fold", as.character(colspresent), ignore.case = T)
+             grepl("fold|fc", as.character(colspresent), ignore.case = T)
       )
       ){
         bool= grepl("log", as.character(colspresent), ignore.case = T) &
-          grepl("fold", as.character(colspresent), ignore.case = T)
+          grepl("fold|fc", as.character(colspresent), ignore.case = T)
         
         defualt_logfc= which(bool)[1]
       }
     }else{
-      defualt_logfc= 2
+      defualt_logfc= 1
     }
     
     

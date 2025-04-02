@@ -3,6 +3,7 @@
 ## A R shiny app and command line interface for reranking DEG lists from microarray and RNA-seq datasets
 A large scale metanalysis of microarray and RNA-seq platforms has identified a subset of genes with higher propensity for differential expression irrespective of the tissue used or the experiment used and current approaches to ranking DEGs solely focus on the relative significance of a gene's p-value to other genes without accounting for this and this may obscure more relevant DEGs. 
 \\
+### Installation
 GEOreflect in contrast combines the relative significance of a given gene both within the study of interest and when compared to pre-existing studies when ranking the most relevant genes. This in turn accounts for genes intrinsic propensity for differential expression alongside its relative significant to other genes within the study of interest. To use the R shiny app for this DEG ranking method install the dependencies- six in total and are installed using the script below.
 ```R
 if("shiny" %in% rownames(installed.packages()) == FALSE){
@@ -27,4 +28,5 @@ runApp('app_and_gpl570.R')
 ```
 The app has 3 tabs- the data import, reranking table and plotting tab. The app accepts DEG lists formatted as .csvs, .txt, .tsv and .xlsx. Once imported- select the gene, log fold and p-value columns. If you are working with GPL570 microarray data you will also need the probe ID column after selecting the GPL570 checkbox. Once the columns have been selected- run GEOreflect by clicking the 'Run GEOreflect' button on the next tab- "Reranking and export". You can then export the reranked list into the working directory- on windows by default your Documents folder by selecting the checkbox for export. The third tab contains the plot which can be produced by either clicking the 'Replot' button or on the second tab the 'Plot reranks' box. This plot can be exported by selecting the 'Export plot' box or using the interactive plotly plot on the side and clicking the print icon in the top right.
 ![GEOreflect shiny app](./images/guide.png)
+### Functions for GEOreflect reranking
 Alternatively, the functions for the GPL570 and RNA-seq GEOreflect reranking can found in the GEOreflect_funciton.R file. This only requires the percentile frames to be loaded into the environment- i.e. load("percentile_matrix_p_value_RNAseq.RDS"); see line with #examples. 2.5GB of free memory is recommended.
